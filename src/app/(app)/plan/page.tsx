@@ -246,7 +246,7 @@ export default function PlanPage() {
   const isPastOrCurrent = month <= currentMonth;
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6">
       <div className="flex items-center gap-3 flex-wrap">
         <button onClick={() => shiftMonth(-1)} className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft">←</button>
         <div>
