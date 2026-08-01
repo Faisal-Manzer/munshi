@@ -385,7 +385,7 @@ export default function BookPage() {
       <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start">
         {/* ledger */}
         <div className="border border-rule bg-paper-raised overflow-x-auto">
-          <table className="ledger-grid w-full text-sm min-w-[860px]">
+          <table className="ledger-grid w-full text-sm min-w-[540px] md:min-w-[860px]">
             <thead>
               <tr className="text-left text-xs text-ink-faint">
                 <th className="px-2 py-2 font-medium w-32">Date</th>

@@ -276,7 +276,7 @@ export default function PlanPage() {
 
       {error && <p className="text-sm text-debit border border-debit-soft bg-debit-soft px-3 py-2">{error}</p>}
 
-      <section className="grid sm:grid-cols-5 gap-2">
+      <section className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         <Stat label="Coming in" v={plannedIn} cls="text-ledger" />
         <Stat label="Cash committed" v={committed} />
         <Stat label="Card dues landing" v={cardDue} cls={cardDue > 0 ? "text-debit" : ""} />
@@ -327,7 +327,7 @@ export default function PlanPage() {
           One-offs — only in {monthName.split(" ")[0]}
         </h2>
         <div className="border border-rule bg-paper-raised overflow-x-auto">
-          <table className="ledger-grid w-full text-sm min-w-[860px]">
+          <table className="ledger-grid w-full text-sm min-w-[540px] md:min-w-[860px]">
             <thead>
               <tr className="text-left text-xs text-ink-faint">
                 <th className="px-2 py-2 font-medium w-32">Date</th>
@@ -368,7 +368,7 @@ export default function PlanPage() {
           </button>
         </div>
         <div className="border border-rule bg-paper-raised overflow-x-auto">
-          <table className="ledger-grid w-full text-sm min-w-[860px]">
+          <table className="ledger-grid w-full text-sm min-w-[540px] md:min-w-[860px]">
             <thead>
               <tr className="text-left text-xs text-ink-faint">
                 <th className="px-2 py-2 font-medium w-32">Date</th>

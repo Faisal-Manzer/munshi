@@ -95,6 +95,16 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   opacity: 0.35;
 }
 
+/* Mobile: drop the secondary Tag (5) and Note (6) columns — full set returns at md */
+@media (max-width: 767px) {
+  .ledger-grid th:nth-child(5),
+  .ledger-grid td:nth-child(5),
+  .ledger-grid th:nth-child(6),
+  .ledger-grid td:nth-child(6) {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
