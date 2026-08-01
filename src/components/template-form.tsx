@@ -57,6 +57,7 @@ function TemplateForm({
   const [installments, setInstallments] = useState(
     editing?.total_installments ? String(editing.total_installments) : ""
   );
+  const [startDate, setStartDate] = useState(editing?.start_date ?? "");
   const [isBudget, setIsBudget] = useState(editing?.is_budget ?? false);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -86,6 +87,17 @@ function TemplateForm({
       reimburse_amount_paise: personId ? parseRupees(personAmt) : null,
       reimburse_expected_day: personId && personDay ? Number(personDay) : null,
       total_installments: installments ? Number(installments) : null,
+      start_date: installments && startDate ? startDate : null,
+      end_date: (() => {
+        if (!installments || !startDate) return null;
+        const s = new Date(startDate + "T00:00:00");
+        const last = new Date(s.getFullYear(), s.getMonth() + Number(installments), 0);
+        const d = new Date(
+          s.getFullYear(), s.getMonth() + Number(installments) - 1,
+          Math.min(s.getDate(), last.getDate())
+        );
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      })(),
       is_budget: isBudget,
     };
     const { error } = editing
@@ -132,6 +144,13 @@ function TemplateForm({
         groups={accountGroups(toChoices)} />
       <input className={input} value={installments} onChange={(e) => setInstallments(e.target.value)}
         placeholder="Total installments (EMIs, optional)" inputMode="numeric" />
+      {installments && (
+        <label className="flex items-center gap-2 text-xs text-ink-soft">
+          <span className="whitespace-nowrap">First installment</span>
+          <input type="date" className={`${input} flex-1`} value={startDate}
+            onChange={(e) => setStartDate(e.target.value)} />
+        </label>
+      )}
       <Select chrome value={personId} onChange={setPersonId} placeholder="Someone repays part? (optional)"
         groups={[{ options: [{ value: "", label: "No one repays" },
           ...people.map((p) => ({ value: p.id, label: p.name }))] }]} />

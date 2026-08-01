@@ -14,6 +14,7 @@ import { PersonModal } from "@/components/person-modal";
 import { TemplateModal } from "@/components/template-form";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { subtreeBalance, toISODate } from "@/lib/ledger";
+import { emiActive, emiInfo, fmtMonth } from "@/lib/emi";
 import { HandCoins, Pencil, Plus, RotateCcw, Scale, Settings2, Users } from "lucide-react";
 import {
   DEFAULT_TAGS,
@@ -157,7 +158,9 @@ export default function BookPage() {
       }
     }
   }
-  for (const t of templates) {
+  // EMIs outside their window (ended / not yet started) don't project into this month
+  const monthTemplates = templates.filter((t) => emiActive(t, month));
+  for (const t of monthTemplates) {
     if (!txns.some((x) => x.recurring_template_id === t.id)) {
       const day = Math.min(t.day_of_month, daysInMonth);
       rows.push({
@@ -190,16 +193,16 @@ export default function BookPage() {
     const to = accountById(accounts, t.to_account_id);
     return from?.kind === "asset" && to?.kind === "asset" && to?.subtype !== "receivable";
   };
-  const plannedIn = templates.filter(isIncomeT).reduce((s, t) => s + t.amount_paise, 0);
+  const plannedIn = monthTemplates.filter(isIncomeT).reduce((s, t) => s + t.amount_paise, 0);
   // cash committed: only templates that take money from bank/cash this month —
   // card-charged items cost cash later, via the card bill (counted in card owed)
-  const committed = templates
+  const committed = monthTemplates
     .filter((t) => {
       if (isIncomeT(t) || isInternalT(t)) return false;
       return accountById(accounts, t.from_account_id)?.subtype !== "credit_card";
     })
     .reduce((s, t) => s + t.amount_paise, 0);
-  const expectedBack = templates.reduce((s, t) => s + (t.reimburse_amount_paise ?? 0), 0);
+  const expectedBack = monthTemplates.reduce((s, t) => s + (t.reimburse_amount_paise ?? 0), 0);
   const avoidable = txns
     .filter((t) => t.tag?.toLowerCase().includes("avoid"))
     .reduce((s, t) => {
@@ -408,6 +411,12 @@ export default function BookPage() {
                       <td className={`${cellCls} amount text-ink-faint whitespace-nowrap`}>{fmtDate(row.date)}</td>
                       <td className={cellCls}>
                         <span className={overdue ? "text-debit" : "text-ink-soft"}>{t.name}</span>
+                        {(() => {
+                          const e = emiInfo(t, month);
+                          return e ? (
+                            <span className="text-[11px] text-ink-faint"> · EMI {e.idx}/{e.total} · ends {fmtMonth(e.endISO)}</span>
+                          ) : null;
+                        })()}
                         {overdue && <span className="text-xs text-debit font-medium"> · overdue</span>}
                       </td>
                       <td className="px-0 py-2 text-xs text-ink-faint">

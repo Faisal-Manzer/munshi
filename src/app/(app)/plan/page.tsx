@@ -10,6 +10,7 @@ import { TitleInput, useTitleSuggestions } from "@/components/title-input";
 import { createEntry, rewriteEntry, type EntryInput } from "@/lib/postings";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { toISODate } from "@/lib/ledger";
+import { emiActive, emiInfo, fmtMonth } from "@/lib/emi";
 import { Pencil, Plus } from "lucide-react";
 import type { Account, Posting, RecurringTemplate, Transaction } from "@/lib/types";
 
@@ -112,16 +113,18 @@ export default function PlanPage() {
   const oneOffOut = oneOffs.filter((x) => oneOffKind(x) === "out").reduce((s, x) => s + oneOffAmount(x), 0);
   const oneOffBack = oneOffs.filter((x) => oneOffKind(x) === "back").reduce((s, x) => s + oneOffAmount(x), 0);
 
-  // ---- fixed monthly plan (budgets + salary are the same every month)
-  const plannedIn = templates.filter(isIncome).reduce((s, t) => s + t.amount_paise, 0) + oneOffIn;
-  const committed = templates
+  // ---- fixed monthly plan (budgets + salary are the same every month);
+  // EMIs count only while their window covers the plan month
+  const monthTemplates = templates.filter((t) => emiActive(t, month));
+  const plannedIn = monthTemplates.filter(isIncome).reduce((s, t) => s + t.amount_paise, 0) + oneOffIn;
+  const committed = monthTemplates
     .filter((t) => {
       if (isIncome(t) || isInternal(t)) return false;
       return accountById(accounts, t.from_account_id)?.subtype !== "credit_card";
     })
     .reduce((s, t) => s + t.amount_paise, 0) + oneOffOut;
   const expectedBack =
-    templates.reduce((s, t) => s + (t.reimburse_amount_paise ?? 0), 0) + oneOffBack;
+    monthTemplates.reduce((s, t) => s + (t.reimburse_amount_paise ?? 0), 0) + oneOffBack;
 
   // ---- card dues landing in the plan month (carry-over from this month's cycle)
   const parentCards = active.filter((a) => a.subtype === "credit_card" && a.parent_id === null);
@@ -162,7 +165,10 @@ export default function PlanPage() {
         .reduce((sum, t) => {
           for (let j = 0; j < 3; j++) {
             const occ = clampDate(today.getFullYear(), today.getMonth() + j, t.day_of_month);
-            if (occ > today && occ > windowStart && occ <= st) return sum + t.amount_paise;
+            if (occ > today && occ > windowStart && occ <= st) {
+              // an EMI only charges the card while its window covers the occurrence
+              return emiActive(t, toISODate(occ).slice(0, 7)) ? sum + t.amount_paise : sum;
+            }
           }
           return sum;
         }, 0);
@@ -380,12 +386,21 @@ export default function PlanPage() {
                 const to = accountById(accounts, t.to_account_id);
                 const income = isIncome(t);
                 const internal = isInternal(t);
+                const emi = emiInfo(t, month);
+                const inactive = emi ? emi.idx < 1 || emi.idx > emi.total : false;
                 return (
-                  <tr key={t.id}>
+                  <tr key={t.id} className={inactive ? "opacity-45" : ""}>
                     <td className="px-2 py-1.5 amount text-ink-faint whitespace-nowrap">
                       every {ordinal(t.day_of_month)}
                     </td>
-                    <td className="px-2 py-1.5">{t.name}</td>
+                    <td className="px-2 py-1.5">
+                      {t.name}
+                      {emi && inactive && (
+                        <span className="text-[11px] text-ink-faint">
+                          {" "}· {emi.idx > emi.total ? `ended ${fmtMonth(emi.endISO)}` : `starts ${fmtMonth(emi.startISO)}`} — not counted
+                        </span>
+                      )}
+                    </td>
                     <td className="px-0 py-2 text-xs text-ink-faint">
                       <div className="flex items-center">
                         <span className="w-1/2 px-2">{from?.name}</span>
@@ -402,8 +417,10 @@ export default function PlanPage() {
                       {t.reimburse_account_id && t.reimburse_amount_paise ? (
                         <span className="text-ledger">{accountById(accounts, t.reimburse_account_id)?.name} returns {formatPaise(t.reimburse_amount_paise)}</span>
                       ) : null}
-                      {t.total_installments ? (
-                        <span className="text-ink-faint">{t.reimburse_account_id && t.reimburse_amount_paise ? " · " : ""}installment {Math.min((doneCounts.get(t.id) ?? 0) + 1, t.total_installments)}/{t.total_installments}</span>
+                      {emi && !inactive ? (
+                        <span className="text-ink-faint">{t.reimburse_account_id && t.reimburse_amount_paise ? " · " : ""}EMI {emi.idx}/{emi.total} · ends {fmtMonth(emi.endISO)}</span>
+                      ) : t.total_installments && !emi ? (
+                        <span className="text-ink-faint">{t.reimburse_account_id && t.reimburse_amount_paise ? " · " : ""}installment {Math.min((doneCounts.get(t.id) ?? 0) + 1, t.total_installments)}/{t.total_installments} · set first-installment date for progress</span>
                       ) : null}
                     </td>
                     <td className="px-2 py-1.5 text-right">
