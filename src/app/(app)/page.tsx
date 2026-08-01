@@ -82,6 +82,7 @@ export default function BookPage() {
   const [splitFor, setSplitFor] = useState<TxnRow | null>(null);
   const [coverFor, setCoverFor] = useState<TxnRow | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [openingOpen, setOpeningOpen] = useState(false);
   const [minMonth, setMinMonth] = useState<string | null>(null);
 
   const today = toISODate(new Date());
@@ -199,15 +200,13 @@ export default function BookPage() {
       });
     }
   }
-  // opening/equity entries pinned on top as one block, then the month by date
+  // opening/equity entries collapse into a single summary row on top
   const isOpening = (r: Row) =>
     r.kind === "txn" &&
     r.txn.postings.some((p) => accountById(accounts, p.account_id)?.kind === "equity");
-  rows.sort((a, b) => {
-    const ao = isOpening(a) ? 0 : 1, bo = isOpening(b) ? 0 : 1;
-    if (ao !== bo) return ao - bo;
-    return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
-  });
+  const openingRows = rows.filter(isOpening) as TxnRow[];
+  const monthRows = rows.filter((r) => !isOpening(r));
+  monthRows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   // ---- summary
   const isIncomeT = (t: RecurringTemplate) =>
@@ -431,7 +430,38 @@ export default function BookPage() {
             </thead>
             <tbody>
               <QuickAddRow accounts={active} supabase={supabase} onDone={refreshAll} onError={setError} />
-              {rows.map((row) => {
+              {openingRows.length > 0 && (
+                <tr className="bg-paper">
+                  <td className="px-2 py-1.5 amount text-ink-faint whitespace-nowrap">
+                    {fmtDate(openingRows[0].date)}
+                  </td>
+                  <td className="px-2 py-1.5 text-ink-soft" colSpan={2}>
+                    <button onClick={() => setOpeningOpen((v) => !v)}
+                      className="hover:text-ledger">
+                      Opening entries · {openingRows.length} · {openingOpen ? "hide" : "show"}
+                    </button>
+                  </td>
+                  <td className="px-2 py-1.5 text-right amount text-ink-faint">—</td>
+                  <td colSpan={3}></td>
+                </tr>
+              )}
+              {openingOpen && openingRows.map((row) => (
+                <TxnEditRow
+                  key={"o" + row.txn.id}
+                  row={row}
+                  accounts={accounts}
+                  active={active}
+                  today={today}
+                  expanded={expanded === row.txn.id}
+                  onToggleExpand={() => setExpanded(expanded === row.txn.id ? null : row.txn.id)}
+                  onSplit={() => setSplitFor(row)}
+                  onCover={() => setCoverFor(row)}
+                  onSave={saveEdit}
+                  onPatch={patchTxn}
+                  onDelete={() => remove(row)}
+                />
+              ))}
+              {monthRows.map((row) => {
                 if (row.kind === "virtual") {
                   const t = row.template;
                   const overdue = row.date < today;
@@ -538,7 +568,7 @@ export default function BookPage() {
               })}
             </tbody>
           </table>
-          {rows.length === 0 && (
+          {monthRows.length === 0 && openingRows.length === 0 && (
             <p className="text-sm text-ink-faint p-4">
               {isPastMonth
                 ? "Nothing was logged this month — past months show only real entries, nothing projected."
