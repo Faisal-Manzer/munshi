@@ -1,11 +1,11 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLedger, accountById } from "@/lib/use-ledger";
-import { createEntry } from "@/lib/postings";
+import { createEntry, rewriteEntry, type EntryInput } from "@/lib/postings";
 import { Amount } from "@/components/amount";
 import { AccountSelect, NEW_CATEGORY } from "@/components/account-select";
-import { InputModal } from "@/components/modal";
+import { InputModal, Modal } from "@/components/modal";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { subtreeBalance, toISODate } from "@/lib/ledger";
 import {
@@ -29,11 +29,21 @@ interface VirtualRow {
   date: string;
   template: RecurringTemplate;
 }
-type Row = TxnRow | VirtualRow;
+interface ReceiveRow {
+  kind: "receive";
+  date: string;
+  template: RecurringTemplate;
+  personId: string;
+  amountPaise: number;
+  received: boolean;
+}
+type Row = TxnRow | VirtualRow | ReceiveRow;
 
 function fmtDate(iso: string) {
-  const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  return new Date(iso + "T00:00:00").toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+  });
 }
 
 export default function BookPage() {
@@ -42,11 +52,17 @@ export default function BookPage() {
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [month, setMonth] = useState(() => toISODate(new Date()).slice(0, 7));
   const [error, setError] = useState<string | null>(null);
-  const [notesOpen, setNotesOpen] = useState<string | null>(null);
   const [postModal, setPostModal] = useState<RecurringTemplate | null>(null);
+  const [receiveModal, setReceiveModal] = useState<ReceiveRow | null>(null);
+  const [receiveAmt, setReceiveAmt] = useState("");
+  const [receiveBank, setReceiveBank] = useState("");
 
   const today = toISODate(new Date());
   const active = useMemo(() => accounts.filter((a) => !a.archived), [accounts]);
+  const banks = useMemo(
+    () => active.filter((a) => ["bank", "cash"].includes(a.subtype)),
+    [active]
+  );
 
   const load = useCallback(async () => {
     const start = `${month}-01`;
@@ -100,14 +116,39 @@ export default function BookPage() {
       amountPaise: neg ? -neg.amount_paise : pos.reduce((s, p) => s + p.amount_paise, 0),
     });
   }
+  // credits made to each person this month (they paid you back)
+  const personCredits = new Map<string, number>();
+  for (const t of txns) {
+    for (const p of t.postings) {
+      if (p.amount_paise < 0) {
+        const acc = accountById(accounts, p.account_id);
+        if (acc?.subtype === "receivable") {
+          personCredits.set(acc.id, (personCredits.get(acc.id) ?? 0) + -p.amount_paise);
+        }
+      }
+    }
+  }
   for (const t of templates) {
-    if (txns.some((x) => x.recurring_template_id === t.id)) continue;
-    const day = Math.min(t.day_of_month, daysInMonth);
-    rows.push({
-      kind: "virtual",
-      date: `${month}-${String(day).padStart(2, "0")}`,
-      template: t,
-    });
+    if (!txns.some((x) => x.recurring_template_id === t.id)) {
+      const day = Math.min(t.day_of_month, daysInMonth);
+      rows.push({
+        kind: "virtual",
+        date: `${month}-${String(day).padStart(2, "0")}`,
+        template: t,
+      });
+    }
+    if (t.reimburse_account_id && t.reimburse_amount_paise) {
+      const day = Math.min(t.reimburse_expected_day ?? t.day_of_month, daysInMonth);
+      rows.push({
+        kind: "receive",
+        date: `${month}-${String(day).padStart(2, "0")}`,
+        template: t,
+        personId: t.reimburse_account_id,
+        amountPaise: t.reimburse_amount_paise,
+        received:
+          (personCredits.get(t.reimburse_account_id) ?? 0) >= t.reimburse_amount_paise,
+      });
+    }
   }
   rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
@@ -173,9 +214,60 @@ export default function BookPage() {
     }
   }
 
+  function openReceive(r: ReceiveRow) {
+    setReceiveAmt(String(r.amountPaise / 100));
+    setReceiveBank(banks[0]?.id ?? "");
+    setReceiveModal(r);
+  }
+
+  async function recordReceive() {
+    if (!receiveModal) return;
+    const paise = parseRupees(receiveAmt);
+    if (!paise || paise <= 0 || !receiveBank) return;
+    const person = accountById(accounts, receiveModal.personId);
+    try {
+      await createEntry(supabase, {
+        date: today,
+        description: `${person?.name} repays ${receiveModal.template.name}`,
+        status: "done",
+        fromAccountId: receiveModal.personId,
+        toAccountId: receiveBank,
+        amountPaise: paise,
+      });
+      setError(null);
+      setReceiveModal(null);
+      await refreshAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "failed");
+    }
+  }
+
   async function patchTxn(id: string, patch: Partial<Transaction>) {
     await supabase.from("transactions").update(patch).eq("id", id);
     await refreshAll();
+  }
+
+  async function saveEdit(row: TxnRow, patch: Partial<EntryInput>) {
+    if (!row.fromId || !row.toId) return;
+    try {
+      await rewriteEntry(supabase, row.txn.id, {
+        date: row.txn.date,
+        description: row.txn.description,
+        status: row.txn.status,
+        fromAccountId: row.fromId,
+        toAccountId: row.toId,
+        amountPaise: row.amountPaise,
+        reimburseAccountId: row.txn.reimburse_account_id,
+        reimbursePaise: row.txn.reimburse_amount_paise,
+        tag: row.txn.tag,
+        notes: row.txn.notes,
+        ...patch,
+      });
+      setError(null);
+      await refreshAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "save failed");
+    }
   }
 
   async function remove(row: TxnRow) {
@@ -193,6 +285,8 @@ export default function BookPage() {
 
   const monthName = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1)
     .toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+
+  const cellCls = "px-2 py-1.5";
 
   return (
     <div className="space-y-5">
@@ -221,10 +315,21 @@ export default function BookPage() {
 
       <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start">
         {/* ledger */}
-        <div className="border border-rule bg-paper-raised">
-          <QuickAdd accounts={active} supabase={supabase} onDone={refreshAll} onError={setError} />
-          <table className="ledger-grid w-full text-sm">
+        <div className="border border-rule bg-paper-raised overflow-x-auto">
+          <table className="ledger-grid w-full text-sm min-w-[860px]">
+            <thead>
+              <tr className="text-left text-xs text-ink-faint">
+                <th className="px-2 py-2 font-medium w-32">Date</th>
+                <th className="px-2 py-2 font-medium">Title</th>
+                <th className="px-2 py-2 font-medium w-56">Account</th>
+                <th className="px-2 py-2 font-medium w-28 text-right">Amount</th>
+                <th className="px-2 py-2 font-medium w-28">Tag</th>
+                <th className="px-2 py-2 font-medium w-40">Note</th>
+                <th className="w-24"></th>
+              </tr>
+            </thead>
             <tbody>
+              <QuickAddRow accounts={active} supabase={supabase} onDone={refreshAll} onError={setError} />
               {rows.map((row) => {
                 if (row.kind === "virtual") {
                   const t = row.template;
@@ -233,94 +338,72 @@ export default function BookPage() {
                   const isIn = from?.kind === "income";
                   return (
                     <tr key={"v" + t.id} className={overdue ? "bg-debit-soft/40" : "bg-paper"}>
-                      <td className="px-3 py-2 w-20 whitespace-nowrap amount text-ink-faint">{fmtDate(row.date)}</td>
-                      <td className="px-2 py-2">
+                      <td className={`${cellCls} amount text-ink-faint whitespace-nowrap`}>{fmtDate(row.date)}</td>
+                      <td className={cellCls}>
                         <span className={overdue ? "text-debit" : "text-ink-soft"}>{t.name}</span>
-                        <span className="text-xs text-ink-faint"> · {from?.name} → {accountById(accounts, t.to_account_id)?.name}</span>
                         {overdue && <span className="text-xs text-debit font-medium"> · overdue</span>}
                       </td>
-                      <td className="px-2 py-2 text-right w-32">
+                      <td className={`${cellCls} text-xs text-ink-faint`}>
+                        {from?.name} → {accountById(accounts, t.to_account_id)?.name}
+                      </td>
+                      <td className={`${cellCls} text-right`}>
                         <Amount paise={isIn ? t.amount_paise : -t.amount_paise} signed />
                       </td>
-                      <td className="px-2 py-2 w-44 text-right" colSpan={3}>
+                      <td className={cellCls}></td>
+                      <td className={cellCls}></td>
+                      <td className={`${cellCls} text-right`}>
                         <button onClick={() => setPostModal(t)}
-                          className={`text-xs border px-2 py-1 ${overdue ? "border-debit text-debit hover:bg-debit-soft" : "border-ledger text-ledger hover:bg-ledger-soft"}`}>
-                          post today
+                          className={`text-xs border px-2 py-1 whitespace-nowrap ${overdue ? "border-debit text-debit hover:bg-debit-soft" : "border-ledger text-ledger hover:bg-ledger-soft"}`}>
+                          post
                         </button>
                       </td>
                     </tr>
                   );
                 }
-                const t = row.txn;
-                const from = row.fromId ? accountById(accounts, row.fromId) : undefined;
-                const to = row.toId ? accountById(accounts, row.toId) : undefined;
-                const isIn = from?.kind === "income" || (from?.subtype === "receivable" && to?.kind === "asset");
-                const isInternal = from?.kind === "asset" && to?.kind === "asset" && to?.subtype !== "receivable";
-                const pending = t.status === "pending";
-                return (
-                  <Fragment key={t.id}>
-                    <tr className={pending ? "bg-pending-soft/40" : ""}>
-                      <td className="px-3 py-1.5 w-20 whitespace-nowrap amount text-ink-faint">{fmtDate(t.date)}</td>
-                      <td className="px-2 py-1.5">
-                        {t.description}
-                        <span className="text-xs text-ink-faint"> · {from?.name}{isInternal ? " ⇄ " : " → "}{to?.name}</span>
-                        {t.recurring_template_id && <span className="text-xs text-ledger"> ✓</span>}
-                        {pending && <span className="text-xs text-pending"> · pending</span>}
-                        {t.notes && <span className="text-xs text-ink-faint italic"> — {t.notes}</span>}
+                if (row.kind === "receive") {
+                  const person = accountById(accounts, row.personId);
+                  const overdue = row.date < today && !row.received;
+                  return (
+                    <tr key={"r" + row.template.id}
+                      className={row.received ? "" : overdue ? "bg-debit-soft/40" : "bg-paper"}>
+                      <td className={`${cellCls} amount text-ink-faint whitespace-nowrap`}>{fmtDate(row.date)}</td>
+                      <td className={cellCls}>
+                        <span className={row.received ? "" : overdue ? "text-debit" : "text-ink-soft"}>
+                          {person?.name} repays {row.template.name}
+                        </span>
+                        {row.received && <span className="text-xs text-ledger"> ✓ received</span>}
+                        {overdue && <span className="text-xs text-debit font-medium"> · overdue</span>}
                       </td>
-                      <td className="px-2 py-1.5 text-right w-32">
-                        <Amount paise={isIn ? row.amountPaise : isInternal ? row.amountPaise : -row.amountPaise}
-                          signed={!isInternal} className={isInternal ? "text-ink-faint" : ""} />
+                      <td className={`${cellCls} text-xs text-ink-faint`}>
+                        {person?.name} → bank
                       </td>
-                      <td className="px-1 py-1.5 w-32">
-                        <input
-                          list="known-tags"
-                          defaultValue={t.tag ?? ""}
-                          placeholder="tag"
-                          onBlur={(e) => {
-                            const v = e.target.value.trim();
-                            if (v !== (t.tag ?? "")) patchTxn(t.id, { tag: v || null });
-                          }}
-                          className={`w-full text-xs px-1 py-0.5 bg-transparent ${t.tag ? "text-pending" : "text-ink-faint"}`}
-                        />
+                      <td className={`${cellCls} text-right`}>
+                        <Amount paise={row.amountPaise} signed className="text-ledger" />
                       </td>
-                      <td className="px-1 py-1.5 w-8 text-center">
-                        <button onClick={() => setNotesOpen(notesOpen === t.id ? null : t.id)}
-                          className={`text-xs ${t.notes ? "text-ledger" : "text-ink-faint"} hover:text-ledger`}
-                          title="Note">✎</button>
-                      </td>
-                      <td className="px-2 py-1.5 w-16 text-right whitespace-nowrap">
-                        {pending && (
-                          <button onClick={() => patchTxn(t.id, { status: "done", date: today })}
-                            className="text-xs text-ledger hover:underline mr-1">paid</button>
+                      <td className={cellCls}></td>
+                      <td className={cellCls}></td>
+                      <td className={`${cellCls} text-right`}>
+                        {!row.received && (
+                          <button onClick={() => openReceive(row)}
+                            className={`text-xs border px-2 py-1 whitespace-nowrap ${overdue ? "border-debit text-debit hover:bg-debit-soft" : "border-ledger text-ledger hover:bg-ledger-soft"}`}>
+                            receive
+                          </button>
                         )}
-                        <button onClick={() => remove(row)} className="text-ink-faint hover:text-debit">×</button>
                       </td>
                     </tr>
-                    {notesOpen === t.id && (
-                      <tr>
-                        <td></td>
-                        <td colSpan={5} className="px-2 pb-2">
-                          <input
-                            autoFocus
-                            defaultValue={t.notes ?? ""}
-                            placeholder="Note… (Enter saves)"
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                patchTxn(t.id, { notes: (e.target as HTMLInputElement).value.trim() || null });
-                                setNotesOpen(null);
-                              }
-                            }}
-                            onBlur={(e) => {
-                              patchTxn(t.id, { notes: e.target.value.trim() || null });
-                              setNotesOpen(null);
-                            }}
-                            className="w-full text-xs px-2 py-1 border border-rule bg-paper"
-                          />
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
+                  );
+                }
+                return (
+                  <TxnEditRow
+                    key={row.txn.id + row.txn.status + row.amountPaise + (row.fromId ?? "") + (row.toId ?? "")}
+                    row={row}
+                    accounts={accounts}
+                    active={active}
+                    today={today}
+                    onSave={saveEdit}
+                    onPatch={patchTxn}
+                    onDelete={() => remove(row)}
+                  />
                 );
               })}
             </tbody>
@@ -374,13 +457,12 @@ export default function BookPage() {
           <SideBlock title="People">
             {active.filter((a) => a.subtype === "receivable").map((p) => {
               const bal = balances.get(p.id)?.balance_paise ?? 0;
-              if (bal === 0) return null;
               return (
                 <div key={p.id} className="px-3 py-1.5 flex items-baseline justify-between gap-2">
                   <p className="text-sm">{p.name}
-                    <span className="text-[11px] text-ink-faint"> {bal > 0 ? "owes you" : "you owe"}</span>
+                    <span className="text-[11px] text-ink-faint"> {bal > 0 ? "owes you" : bal < 0 ? "you owe" : ""}</span>
                   </p>
-                  <Amount paise={Math.abs(bal)} className={bal > 0 ? "text-ledger" : "text-debit"} />
+                  <Amount paise={Math.abs(bal)} className={bal > 0 ? "text-ledger" : bal < 0 ? "text-debit" : "text-ink-faint"} />
                 </div>
               );
             })}
@@ -408,6 +490,42 @@ export default function BookPage() {
         }}
         onClose={() => setPostModal(null)}
       />
+
+      <Modal
+        open={receiveModal !== null}
+        title={receiveModal
+          ? `${accountById(accounts, receiveModal.personId)?.name} repays ${receiveModal.template.name}`
+          : ""}
+        onClose={() => setReceiveModal(null)}
+      >
+        <input
+          value={receiveAmt}
+          onChange={(e) => setReceiveAmt(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && recordReceive()}
+          inputMode="decimal"
+          placeholder="Amount ₹"
+          className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised amount"
+          autoFocus
+        />
+        <select
+          value={receiveBank}
+          onChange={(e) => setReceiveBank(e.target.value)}
+          className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised mt-2"
+        >
+          {banks.map((b) => (
+            <option key={b.id} value={b.id}>into {b.name}</option>
+          ))}
+        </select>
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={() => setReceiveModal(null)} className="text-sm text-ink-soft px-3 py-1.5 hover:text-ink">
+            Cancel
+          </button>
+          <button onClick={recordReceive}
+            className="text-sm bg-ledger text-paper-raised px-4 py-1.5 hover:opacity-90">
+            Record
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -430,7 +548,92 @@ function SideBlock({ title, children }: { title: string; children: React.ReactNo
   );
 }
 
-function QuickAdd({
+function TxnEditRow({
+  row, accounts, active, today, onSave, onPatch, onDelete,
+}: {
+  row: TxnRow;
+  accounts: Account[];
+  active: Account[];
+  today: string;
+  onSave: (row: TxnRow, patch: Partial<EntryInput>) => void;
+  onPatch: (id: string, patch: Partial<Transaction>) => void;
+  onDelete: () => void;
+}) {
+  const t = row.txn;
+  const from = row.fromId ? accountById(accounts, row.fromId) : undefined;
+  const to = row.toId ? accountById(accounts, row.toId) : undefined;
+  const isIn = from?.kind === "income" || (from?.subtype === "receivable" && to?.kind === "asset");
+  const isInternal = from?.kind === "asset" && to?.kind === "asset" && to?.subtype !== "receivable";
+  const pending = t.status === "pending";
+
+  const [desc, setDesc] = useState(t.description);
+  const [amount, setAmount] = useState(String(row.amountPaise / 100));
+
+  const fromChoices = active.filter((a) =>
+    ["bank", "envelope", "cash", "investment", "credit_card", "receivable", "salary", "other_income"].includes(a.subtype)
+  );
+  const toChoices = active.filter((a) =>
+    !["salary", "other_income", "opening_balance"].includes(a.subtype)
+  );
+
+  return (
+    <tr className={pending ? "bg-pending-soft/40" : ""}>
+      <td>
+        <input type="date" value={t.date}
+          onChange={(e) => onSave(row, { date: e.target.value })}
+          className="amount" />
+      </td>
+      <td>
+        <input value={desc} onChange={(e) => setDesc(e.target.value)}
+          onBlur={() => desc.trim() && desc !== t.description && onSave(row, { description: desc.trim() })} />
+      </td>
+      <td>
+        <div className="flex items-center">
+          <AccountSelect value={row.fromId ?? ""} choices={fromChoices} className="w-1/2 text-xs"
+            onChange={(v) => v && onSave(row, { fromAccountId: v })} />
+          <span className="text-ink-faint text-xs">{isInternal ? "⇄" : "→"}</span>
+          <AccountSelect value={row.toId ?? ""} choices={toChoices} className="w-1/2 text-xs"
+            onChange={(v) => v && onSave(row, { toAccountId: v })} />
+        </div>
+      </td>
+      <td>
+        <input value={amount} inputMode="decimal"
+          onChange={(e) => setAmount(e.target.value)}
+          onBlur={() => {
+            const p = parseRupees(amount);
+            if (p && p > 0 && p !== row.amountPaise) onSave(row, { amountPaise: p });
+          }}
+          className={`text-right amount ${isIn ? "text-ledger" : isInternal ? "text-ink-faint" : "text-debit"}`} />
+      </td>
+      <td>
+        <input list="known-tags" defaultValue={t.tag ?? ""} placeholder="—"
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v !== (t.tag ?? "")) onPatch(t.id, { tag: v || null });
+          }}
+          className={`text-xs ${t.tag ? "text-pending" : "text-ink-faint"}`} />
+      </td>
+      <td>
+        <input defaultValue={t.notes ?? ""} placeholder="—"
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v !== (t.notes ?? "")) onPatch(t.id, { notes: v || null });
+          }}
+          className="text-xs text-ink-soft" />
+      </td>
+      <td className="px-2 py-1.5 text-right whitespace-nowrap">
+        {t.recurring_template_id && <span className="text-xs text-ledger mr-1">✓</span>}
+        {pending && (
+          <button onClick={() => onPatch(t.id, { status: "done", date: today })}
+            className="text-xs text-ledger hover:underline mr-1">paid</button>
+        )}
+        <button onClick={onDelete} className="text-ink-faint hover:text-debit">×</button>
+      </td>
+    </tr>
+  );
+}
+
+function QuickAddRow({
   accounts, supabase, onDone, onError,
 }: {
   accounts: Account[];
@@ -497,28 +700,31 @@ function QuickAdd({
 
   return (
     <>
-      <div className="flex flex-wrap gap-0 border-b border-rule-strong bg-ledger-soft/50"
-        onKeyDown={(e) => e.key === "Enter" && submit()}>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-          className="px-2 py-2 text-sm bg-transparent w-36" />
-        <input value={desc} onChange={(e) => setDesc(e.target.value)}
-          placeholder="What happened… (Enter saves)"
-          className="px-2 py-2 text-sm bg-transparent flex-1 min-w-40" />
-        <input value={amount} onChange={(e) => setAmount(e.target.value)}
-          placeholder="₹" inputMode="decimal"
-          className="px-2 py-2 text-sm bg-transparent w-24 text-right amount" />
-        <AccountSelect value={fromId} onChange={setFromId} choices={fromChoices}
-          placeholder="from…" className="px-1 py-2 text-sm bg-transparent w-36" />
-        <AccountSelect value={toId} choices={toChoices} allowCreate
-          placeholder="→ Spends"
-          onChange={(v) => (v === NEW_CATEGORY ? setNewCatOpen(true) : setToId(v))}
-          className="px-1 py-2 text-sm bg-transparent w-36" />
-        <input value={tag} onChange={(e) => setTag(e.target.value)} list="known-tags"
-          placeholder="tag" className="px-2 py-2 text-xs bg-transparent w-24" />
-        <input value={note} onChange={(e) => setNote(e.target.value)}
-          placeholder="note" className="px-2 py-2 text-xs bg-transparent w-28" />
-        <button onClick={submit} className="px-3 text-ledger text-sm font-medium hover:underline">Add</button>
-      </div>
+      <tr className="bg-ledger-soft/50" onKeyDown={(e) => e.key === "Enter" && submit()}>
+        <td><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></td>
+        <td><input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="New entry… (Enter saves)" /></td>
+        <td>
+          <div className="flex items-center">
+            <AccountSelect value={fromId} onChange={setFromId} choices={fromChoices}
+              placeholder="from…" className="w-1/2" />
+            <span className="text-ink-faint text-xs">→</span>
+            <AccountSelect value={toId} choices={toChoices} allowCreate placeholder="Spends"
+              onChange={(v) => (v === NEW_CATEGORY ? setNewCatOpen(true) : setToId(v))}
+              className="w-1/2" />
+          </div>
+        </td>
+        <td><input value={amount} onChange={(e) => setAmount(e.target.value)}
+          placeholder="₹" inputMode="decimal" className="text-right amount" /></td>
+        <td><input value={tag} onChange={(e) => setTag(e.target.value)} list="known-tags"
+          placeholder="tag" className="text-xs" /></td>
+        <td><input value={note} onChange={(e) => setNote(e.target.value)}
+          placeholder="note" className="text-xs" /></td>
+        <td className="text-right">
+          <button onClick={submit} className="text-ledger text-xs font-medium px-2 py-1.5 hover:underline">
+            Add ↵
+          </button>
+        </td>
+      </tr>
       <InputModal
         open={newCatOpen}
         title="New category"

@@ -75,6 +75,7 @@ export async function rewriteEntry(
       reimburse_account_id: e.reimburseAccountId ?? null,
       reimburse_amount_paise: e.reimbursePaise ?? null,
       tag: e.tag ?? null,
+      notes: e.notes ?? null,
     })
     .eq("id", txnId);
   if (error) throw error;
