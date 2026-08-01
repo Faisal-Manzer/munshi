@@ -257,9 +257,9 @@ export default function PlanPage() {
       <div className="flex items-center gap-3 flex-wrap">
         <button onClick={() => shiftMonth(-1)} disabled={month <= nextMonth}
           className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft disabled:opacity-30 disabled:hover:bg-transparent">←</button>
-        <div>
+        <div className="w-[250px] text-center">
           <p className="text-xs uppercase tracking-[0.2em] text-ink-faint">Plan</p>
-          <h1 className="text-3xl">{monthName}</h1>
+          <h1 className="text-3xl whitespace-nowrap">{monthName}</h1>
         </div>
         <button onClick={() => shiftMonth(1)} className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft">→</button>
         {month !== nextMonth && (

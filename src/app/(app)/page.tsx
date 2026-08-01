@@ -387,7 +387,7 @@ export default function BookPage() {
         <div className="flex items-center gap-3">
           <button onClick={() => shiftMonth(-1)} disabled={!canPrev}
             className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft disabled:opacity-30 disabled:hover:bg-transparent">←</button>
-          <h1 className="text-3xl">{monthName}</h1>
+          <h1 className="text-3xl w-[250px] text-center whitespace-nowrap">{monthName}</h1>
           <button onClick={() => shiftMonth(1)} disabled={!canNext}
             className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft disabled:opacity-30 disabled:hover:bg-transparent">→</button>
         </div>
