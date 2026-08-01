@@ -6,9 +6,13 @@ import { createEntry, rewriteEntry, type EntryInput } from "@/lib/postings";
 import { Amount } from "@/components/amount";
 import { AccountSelect, NEW_CATEGORY } from "@/components/account-select";
 import { InputModal, Modal } from "@/components/modal";
+import { AccountModal, BLOCK_OPTIONS } from "@/components/account-modal";
+import { CategoriesModal } from "@/components/categories-modal";
+import { PersonModal } from "@/components/person-modal";
+import { TemplateModal } from "@/components/template-form";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { subtreeBalance, toISODate } from "@/lib/ledger";
-import { HandCoins, Plus, Scale } from "lucide-react";
+import { HandCoins, Pencil, Plus, RotateCcw, Scale, Settings2, Users } from "lucide-react";
 import {
   DEFAULT_TAGS,
   type Account,
@@ -66,6 +70,13 @@ export default function BookPage() {
   const [reconFor, setReconFor] = useState<Account | null>(null);
   const [addPersonOpen, setAddPersonOpen] = useState(false);
   const [leftOpen, setLeftOpen] = useState(false);
+  // folded-in tab features: account CRUD, categories, person history, template edit
+  const [acctModal, setAcctModal] = useState<{ editing: Account | null; optionIdxs?: number[] } | null>(null);
+  const [catOpen, setCatOpen] = useState(false);
+  const [personView, setPersonView] = useState<Account | null>(null);
+  const [tplEdit, setTplEdit] = useState<RecurringTemplate | null>(null);
+  const [splitFor, setSplitFor] = useState<TxnRow | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const today = toISODate(new Date());
   const active = useMemo(() => accounts.filter((a) => !a.archived), [accounts]);
@@ -410,9 +421,12 @@ export default function BookPage() {
                       </td>
                       <td className={cellCls}></td>
                       <td className={cellCls}></td>
-                      <td className={`${cellCls} text-right`}>
+                      <td className={`${cellCls} text-right whitespace-nowrap`}>
+                        <IconBtn title={`Edit "${t.name}"`} onClick={() => setTplEdit(t)}>
+                          <Pencil size={13} />
+                        </IconBtn>
                         <button onClick={() => setPostModal(t)}
-                          className={`text-xs border px-2 py-1 whitespace-nowrap ${overdue ? "border-debit text-debit hover:bg-debit-soft" : "border-ledger text-ledger hover:bg-ledger-soft"}`}>
+                          className={`text-xs border px-2 py-1 whitespace-nowrap ml-1 ${overdue ? "border-debit text-debit hover:bg-debit-soft" : "border-ledger text-ledger hover:bg-ledger-soft"}`}>
                           post
                         </button>
                       </td>
@@ -467,6 +481,9 @@ export default function BookPage() {
                     accounts={accounts}
                     active={active}
                     today={today}
+                    expanded={expanded === row.txn.id}
+                    onToggleExpand={() => setExpanded(expanded === row.txn.id ? null : row.txn.id)}
+                    onSplit={() => setSplitFor(row)}
                     onSave={saveEdit}
                     onPatch={patchTxn}
                     onDelete={() => remove(row)}
@@ -482,7 +499,15 @@ export default function BookPage() {
 
         {/* sidebar */}
         <aside className="space-y-4">
-          <SideBlock title="Accounts">
+          <SideBlock title="Accounts"
+            action={<span className="flex items-center gap-1">
+              <IconBtn title="Manage categories & income" onClick={() => setCatOpen(true)}>
+                <Settings2 size={13} />
+              </IconBtn>
+              <IconBtn title="Add bank / envelope / cash" onClick={() => setAcctModal({ editing: null, optionIdxs: BLOCK_OPTIONS.accounts })}>
+                <Plus size={13} />
+              </IconBtn>
+            </span>}>
             {active.filter((a) => ["bank", "cash"].includes(a.subtype)).map((b) => {
               const total = subtreeBalance(accounts, balances, b.id);
               const own = balances.get(b.id)?.balance_paise ?? 0;
@@ -492,7 +517,10 @@ export default function BookPage() {
                 <div key={b.id}>
                   <div className="px-3 py-1.5 flex items-center justify-between gap-2">
                     <div>
-                      <p className="text-sm">{b.name}</p>
+                      <button onClick={() => setAcctModal({ editing: b })}
+                        className="text-sm text-left hover:text-ledger" title={`Edit ${b.name}`}>
+                        {b.name}
+                      </button>
                       {envs.length > 0 && (
                         <p className="text-[11px] text-ink-faint">free {formatPaise(own)}</p>
                       )}
@@ -511,7 +539,10 @@ export default function BookPage() {
                   </div>
                   {envs.map((env) => (
                     <div key={env.id} className="pl-6 pr-9 py-1 flex items-baseline justify-between gap-2">
-                      <p className="text-xs text-ink-soft">↳ {env.name}</p>
+                      <button onClick={() => setAcctModal({ editing: env })}
+                        className="text-xs text-ink-soft text-left hover:text-ledger" title={`Edit ${env.name}`}>
+                        ↳ {env.name}
+                      </button>
                       <Amount paise={balances.get(env.id)?.balance_paise ?? 0} className="text-xs" />
                     </div>
                   ))}
@@ -520,7 +551,10 @@ export default function BookPage() {
             })}
           </SideBlock>
 
-          <SideBlock title="Cards">
+          <SideBlock title="Cards"
+            action={<IconBtn title="Add card / sub-card" onClick={() => setAcctModal({ editing: null, optionIdxs: BLOCK_OPTIONS.cards })}>
+              <Plus size={13} />
+            </IconBtn>}>
             {parentCards.map((c) => {
               const due = cardDueNow(c);
               const unbilled = cardUnbilled(c);
@@ -530,7 +564,10 @@ export default function BookPage() {
               return (
                 <div key={c.id} className="px-3 py-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm">{c.name}</p>
+                    <button onClick={() => setAcctModal({ editing: c })}
+                      className="text-sm text-left hover:text-ledger" title={`Edit ${c.name}`}>
+                      {c.name}
+                    </button>
                     <div className="flex items-center gap-1.5">
                       <Amount paise={owed} className={owed > 0 ? "text-debit" : "text-ink-faint"} />
                       <IconBtn title={`Reconcile ${c.name}`} onClick={() => setReconFor(c)}>
@@ -564,43 +601,72 @@ export default function BookPage() {
               <Plus size={13} />
             </IconBtn>}>
             {(() => {
-              const rowsP = active
+              const all = active
                 .filter((a) => a.subtype === "receivable")
-                .map((p) => ({ p, bal: balances.get(p.id)?.balance_paise ?? 0 }))
-                .filter((x) => x.bal !== 0);
-              if (rowsP.length === 0) {
-                return <p className="px-3 py-1.5 text-xs text-ink-faint">All settled.</p>;
-              }
-              return rowsP.map(({ p, bal }) => (
-                <div key={p.id} className="px-3 py-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm">{p.name}</p>
-                      <p className="text-[11px] text-ink-faint">{bal > 0 ? "owes you" : "you owe"}</p>
+                .map((p) => ({ p, bal: balances.get(p.id)?.balance_paise ?? 0 }));
+              const owing = all.filter((x) => x.bal !== 0);
+              const settled = all.filter((x) => x.bal === 0);
+              return (
+                <>
+                  {owing.map(({ p, bal }) => (
+                    <div key={p.id} className="px-3 py-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <button onClick={() => setPersonView(p)}
+                            className="text-sm text-left hover:text-ledger" title={`${p.name} — full ledger`}>
+                            {p.name}
+                          </button>
+                          <p className="text-[11px] text-ink-faint">{bal > 0 ? "owes you" : "you owe"}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Amount paise={Math.abs(bal)} className={bal > 0 ? "text-ledger" : "text-debit"} />
+                          {bal > 0 && (
+                            <IconBtn title={`Record money received from ${p.name}`}
+                              onClick={() => openReceive({
+                                personId: p.id,
+                                amountPaise: bal,
+                                label: `Received from ${p.name}`,
+                              })}>
+                              <HandCoins size={13} />
+                            </IconBtn>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <Amount paise={Math.abs(bal)} className={bal > 0 ? "text-ledger" : "text-debit"} />
-                      {bal > 0 && (
-                        <IconBtn title={`Record money received from ${p.name}`}
-                          onClick={() => openReceive({
-                            personId: p.id,
-                            amountPaise: bal,
-                            label: `Received from ${p.name}`,
-                          })}>
-                          <HandCoins size={13} />
-                        </IconBtn>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ));
+                  ))}
+                  {settled.length > 0 && (
+                    <p className="px-3 py-1.5 text-[11px] text-ink-faint">
+                      settled:{" "}
+                      {settled.map(({ p }, i) => (
+                        <span key={p.id}>
+                          {i > 0 && ", "}
+                          <button onClick={() => setPersonView(p)}
+                            className="hover:text-ledger underline decoration-dotted"
+                            title={`${p.name} — full ledger`}>
+                            {p.name}
+                          </button>
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                  {all.length === 0 && (
+                    <p className="px-3 py-1.5 text-xs text-ink-faint">No people yet.</p>
+                  )}
+                </>
+              );
             })()}
           </SideBlock>
 
-          <SideBlock title="Investments">
+          <SideBlock title="Investments"
+            action={<IconBtn title="Add investment" onClick={() => setAcctModal({ editing: null, optionIdxs: BLOCK_OPTIONS.investments })}>
+              <Plus size={13} />
+            </IconBtn>}>
             {active.filter((a) => a.subtype === "investment").map((v) => (
               <div key={v.id} className="px-3 py-1.5 flex items-center justify-between gap-2">
-                <p className="text-sm">{v.name}</p>
+                <button onClick={() => setAcctModal({ editing: v })}
+                  className="text-sm text-left hover:text-ledger" title={`Edit ${v.name}`}>
+                  {v.name}
+                </button>
                 <div className="flex items-center gap-1.5">
                   <Amount paise={balances.get(v.id)?.balance_paise ?? 0} />
                   <IconBtn title={`Reconcile ${v.name}`} onClick={() => setReconFor(v)}>
@@ -611,10 +677,16 @@ export default function BookPage() {
             ))}
           </SideBlock>
 
-          <SideBlock title="Loans">
+          <SideBlock title="Loans"
+            action={<IconBtn title="Add loan" onClick={() => setAcctModal({ editing: null, optionIdxs: BLOCK_OPTIONS.loans })}>
+              <Plus size={13} />
+            </IconBtn>}>
             {active.filter((a) => a.subtype === "loan").map((l) => (
               <div key={l.id} className="px-3 py-1.5 flex items-center justify-between gap-2">
-                <p className="text-sm">{l.name}</p>
+                <button onClick={() => setAcctModal({ editing: l })}
+                  className="text-sm text-left hover:text-ledger" title={`Edit ${l.name}`}>
+                  {l.name}
+                </button>
                 <div className="flex items-center gap-1.5">
                   <Amount paise={-(balances.get(l.id)?.balance_paise ?? 0)} />
                   <IconBtn title={`Reconcile ${l.name}`} onClick={() => setReconFor(l)}>
@@ -714,7 +786,110 @@ export default function BookPage() {
           </button>
         </div>
       </Modal>
+
+      {acctModal && (
+        <AccountModal
+          open
+          editing={acctModal.editing}
+          optionIdxs={acctModal.optionIdxs}
+          onDone={refreshAll}
+          onClose={() => setAcctModal(null)}
+        />
+      )}
+
+      <CategoriesModal
+        open={catOpen}
+        accounts={accounts}
+        balances={balances}
+        onEdit={(a) => setAcctModal({ editing: a })}
+        onNew={() => setAcctModal({ editing: null, optionIdxs: [8, 9] })}
+        onClose={() => setCatOpen(false)}
+      />
+
+      <PersonModal
+        person={personView}
+        balancePaise={personView ? balances.get(personView.id)?.balance_paise ?? 0 : 0}
+        onClose={() => setPersonView(null)}
+      />
+
+      <TemplateModal
+        open={tplEdit !== null}
+        accounts={active}
+        editing={tplEdit}
+        onSaved={async () => {
+          setTplEdit(null);
+          await refreshAll();
+        }}
+        onClose={() => setTplEdit(null)}
+      />
+
+      <SplitModal
+        row={splitFor}
+        people={active.filter((a) => a.subtype === "receivable")}
+        onSave={async (personId, paise) => {
+          if (!splitFor) return;
+          await saveEdit(splitFor, {
+            reimburseAccountId: personId,
+            reimbursePaise: personId ? paise : null,
+          });
+          setSplitFor(null);
+        }}
+        onClose={() => setSplitFor(null)}
+      />
     </div>
+  );
+}
+
+function SplitModal({
+  row, people, onSave, onClose,
+}: {
+  row: TxnRow | null;
+  people: Account[];
+  onSave: (personId: string | null, paise: number | null) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [personId, setPersonId] = useState("");
+  const [amt, setAmt] = useState("");
+  const txnId = row?.txn.id;
+
+  useEffect(() => {
+    if (!row) return;
+    setPersonId(row.txn.reimburse_account_id ?? "");
+    setAmt(row.txn.reimburse_amount_paise ? String(row.txn.reimburse_amount_paise / 100) : "");
+    // re-seed whenever a different row opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txnId]);
+
+  if (!row) return null;
+  const paise = parseRupees(amt);
+  return (
+    <Modal open title={`Split "${row.txn.description}"`} onClose={onClose}>
+      <p className="text-xs text-ink-soft mb-2">
+        Their share is added to what they owe you; your expense shrinks by the same amount.
+      </p>
+      <select value={personId} onChange={(e) => setPersonId(e.target.value)}
+        className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised">
+        <option value="">No split</option>
+        {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </select>
+      {personId && (
+        <input value={amt} onChange={(e) => setAmt(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && onSave(personId, paise)}
+          inputMode="decimal" placeholder="Their share ₹"
+          className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised amount mt-2" />
+      )}
+      <div className="flex justify-end gap-2 mt-4">
+        <button onClick={onClose} className="text-sm text-ink-soft px-3 py-1.5 hover:text-ink">
+          Cancel
+        </button>
+        <button
+          onClick={() => onSave(personId || null, paise)}
+          disabled={!!personId && (!paise || paise <= 0 || paise >= row.amountPaise)}
+          className="text-sm bg-ledger text-paper-raised px-4 py-1.5 hover:opacity-90 disabled:opacity-50">
+          Save
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -783,12 +958,15 @@ function SideBlock({
 }
 
 function TxnEditRow({
-  row, accounts, active, today, onSave, onPatch, onDelete,
+  row, accounts, active, today, expanded, onToggleExpand, onSplit, onSave, onPatch, onDelete,
 }: {
   row: TxnRow;
   accounts: Account[];
   active: Account[];
   today: string;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onSplit: () => void;
   onSave: (row: TxnRow, patch: Partial<EntryInput>) => void;
   onPatch: (id: string, patch: Partial<Transaction>) => void;
   onDelete: () => void;
@@ -808,23 +986,43 @@ function TxnEditRow({
   if (row.complex) {
     // multi-leg entry (e.g. opening balances) — read-only so it can't be mangled
     return (
-      <tr className="bg-paper">
-        <td className="px-2 py-1.5 amount text-ink-faint whitespace-nowrap">{fmtDate(t.date)}</td>
-        <td className="px-2 py-1.5 text-ink-soft">{t.description}</td>
-        <td className="px-2 py-1.5 text-xs text-ink-faint">
-          {t.postings.length <= 3
-            ? "opening entry"
-            : `${t.postings.length} accounts — see History`}
-        </td>
-        <td className="px-2 py-1.5 text-right amount text-ink-faint">
-          {t.postings.length <= 3 ? formatPaise(row.amountPaise) : "—"}
-        </td>
-        <td className="px-2 py-1.5"></td>
-        <td className="px-2 py-1.5 text-xs text-ink-faint">{t.notes ?? ""}</td>
-        <td className="px-2 py-1.5 text-right">
-          <button onClick={onDelete} className="text-ink-faint hover:text-debit">×</button>
-        </td>
-      </tr>
+      <>
+        <tr className="bg-paper">
+          <td className="px-2 py-1.5 amount text-ink-faint whitespace-nowrap">{fmtDate(t.date)}</td>
+          <td className="px-2 py-1.5 text-ink-soft">{t.description}</td>
+          <td className="px-2 py-1.5 text-xs">
+            <button onClick={onToggleExpand} className="text-ink-faint hover:text-ledger">
+              {t.postings.length <= 3
+                ? "opening entry"
+                : `${t.postings.length} accounts`} · {expanded ? "hide" : "show"}
+            </button>
+          </td>
+          <td className="px-2 py-1.5 text-right amount text-ink-faint">
+            {t.postings.length <= 3 ? formatPaise(row.amountPaise) : "—"}
+          </td>
+          <td className="px-2 py-1.5"></td>
+          <td className="px-2 py-1.5 text-xs text-ink-faint">{t.notes ?? ""}</td>
+          <td className="px-2 py-1.5 text-right">
+            <button onClick={onDelete} className="text-ink-faint hover:text-debit">×</button>
+          </td>
+        </tr>
+        {expanded &&
+          [...t.postings]
+            .sort((a, b) => b.amount_paise - a.amount_paise)
+            .map((p) => (
+              <tr key={p.id} className="bg-paper">
+                <td></td>
+                <td className="px-2 py-1 pl-6 text-xs text-ink-faint">
+                  ↳ {accountById(accounts, p.account_id)?.name}
+                </td>
+                <td></td>
+                <td className="px-2 py-1 text-right">
+                  <Amount paise={p.amount_paise} signed className="text-xs" />
+                </td>
+                <td colSpan={3}></td>
+              </tr>
+            ))}
+      </>
     );
   }
 
@@ -899,11 +1097,22 @@ function TxnEditRow({
       </td>
       <td className="px-2 py-1.5 text-right whitespace-nowrap">
         {t.recurring_template_id && <span className="text-xs text-ledger mr-1">✓</span>}
-        {pending && (
+        {pending ? (
           <button onClick={() => onPatch(t.id, { status: "done", date: today })}
             className="text-xs text-ledger hover:underline mr-1">paid</button>
+        ) : (
+          <IconBtn title="Mark pending again" onClick={() => onPatch(t.id, { status: "pending" })}>
+            <RotateCcw size={12} />
+          </IconBtn>
         )}
-        <button onClick={onDelete} className="text-ink-faint hover:text-debit">×</button>
+        <IconBtn
+          title={t.reimburse_account_id
+            ? `Split: ${accountById(accounts, t.reimburse_account_id)?.name} owes ${formatPaise(t.reimburse_amount_paise ?? 0)}`
+            : "Split with someone (they owe part)"}
+          onClick={onSplit}>
+          <Users size={12} className={t.reimburse_account_id ? "text-ledger" : undefined} />
+        </IconBtn>
+        <button onClick={onDelete} className="text-ink-faint hover:text-debit ml-1">×</button>
       </td>
     </tr>
   );

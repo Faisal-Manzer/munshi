@@ -3,20 +3,25 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLedger, accountById } from "@/lib/use-ledger";
 import { Amount } from "@/components/amount";
+import { TemplateModal } from "@/components/template-form";
 import { formatPaise } from "@/lib/money";
 import { toISODate } from "@/lib/ledger";
+import { Pencil, Plus } from "lucide-react";
 import type { Posting, RecurringTemplate, Transaction } from "@/lib/types";
 
 export default function PlanPage() {
   const { supabase, accounts, balances, cycles, loading } = useLedger();
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [txns, setTxns] = useState<(Transaction & { postings: Posting[] })[]>([]);
+  const [doneCounts, setDoneCounts] = useState<Map<string, number>>(new Map());
   const [month, setMonth] = useState(() => toISODate(new Date()).slice(0, 7));
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<RecurringTemplate | null>(null);
 
   const load = useCallback(async () => {
     const start = `${month}-01`;
     const end = toISODate(new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1));
-    const [tRes, xRes] = await Promise.all([
+    const [tRes, xRes, cRes] = await Promise.all([
       supabase.from("recurring_templates").select("*").eq("active", true).order("day_of_month"),
       supabase
         .from("transactions")
@@ -24,9 +29,19 @@ export default function PlanPage() {
         .not("recurring_template_id", "is", null)
         .gte("date", start)
         .lt("date", end),
+      supabase
+        .from("transactions")
+        .select("recurring_template_id")
+        .not("recurring_template_id", "is", null)
+        .eq("status", "done"),
     ]);
     setTemplates((tRes.data ?? []) as RecurringTemplate[]);
     setTxns((xRes.data ?? []) as (Transaction & { postings: Posting[] })[]);
+    const counts = new Map<string, number>();
+    for (const r of (cRes.data ?? []) as { recurring_template_id: string }[]) {
+      counts.set(r.recurring_template_id, (counts.get(r.recurring_template_id) ?? 0) + 1);
+    }
+    setDoneCounts(counts);
   }, [supabase, month]);
 
   useEffect(() => {
@@ -109,9 +124,15 @@ export default function PlanPage() {
       </section>
 
       <section>
-        <h2 className="text-xs uppercase tracking-[0.15em] text-ink-faint mb-2 font-sans font-medium">
-          Planned vs actual
-        </h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-xs uppercase tracking-[0.15em] text-ink-faint font-sans font-medium">
+            Planned vs actual
+          </h2>
+          <button onClick={() => { setEditing(null); setFormOpen(true); }}
+            className="flex items-center gap-1 text-xs border border-ledger text-ledger px-2 py-1 hover:bg-ledger-soft">
+            <Plus size={12} /> recurring
+          </button>
+        </div>
         <div className="border border-rule bg-paper-raised overflow-x-auto">
           <table className="ledger-grid w-full text-sm min-w-[560px]">
             <thead>
@@ -121,6 +142,7 @@ export default function PlanPage() {
                 <th className="px-2 py-2 font-medium text-right w-28">Planned</th>
                 <th className="px-2 py-2 font-medium text-right w-28">Actual</th>
                 <th className="px-2 py-2 font-medium text-right w-28">Diff</th>
+                <th className="w-8"></th>
               </tr>
             </thead>
             <tbody>
@@ -139,6 +161,9 @@ export default function PlanPage() {
                       <span className="text-xs text-ink-faint"> · {from?.name}{internal ? " ⇄ " : " → "}{to?.name}</span>
                       {t.reimburse_account_id && t.reimburse_amount_paise ? (
                         <span className="text-[11px] text-ledger"> · {accountById(accounts, t.reimburse_account_id)?.name} returns {formatPaise(t.reimburse_amount_paise)}</span>
+                      ) : null}
+                      {t.total_installments ? (
+                        <span className="text-[11px] text-ink-faint"> · installment {Math.min((doneCounts.get(t.id) ?? 0) + 1, t.total_installments)}/{t.total_installments}</span>
                       ) : null}
                     </td>
                     <td className="px-2 py-1.5 text-right">
@@ -163,6 +188,13 @@ export default function PlanPage() {
                         <span className="text-xs text-ink-faint">{diff === 0 ? "on plan" : ""}</span>
                       )}
                     </td>
+                    <td className="px-2 py-1.5 text-right">
+                      <button onClick={() => { setEditing(t); setFormOpen(true); }}
+                        title={`Edit ${t.name}`} aria-label={`Edit ${t.name}`}
+                        className="text-ink-faint hover:text-ledger p-0.5">
+                        <Pencil size={13} />
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -170,7 +202,7 @@ export default function PlanPage() {
           </table>
         </div>
         <p className="text-xs text-ink-faint mt-2">
-          Edit planned items under Recurring — amounts, days, who repays.
+          Pencil edits a planned item — amount, day, who repays, or stop it.
         </p>
       </section>
 
@@ -192,6 +224,21 @@ export default function PlanPage() {
           Liquid today (banks + cash + set aside): <span className="amount">{formatPaise(liquid)}</span>
         </p>
       </section>
+
+      <TemplateModal
+        open={formOpen}
+        accounts={active}
+        editing={editing}
+        onSaved={() => {
+          setFormOpen(false);
+          setEditing(null);
+          load();
+        }}
+        onClose={() => {
+          setFormOpen(false);
+          setEditing(null);
+        }}
+      />
     </div>
   );
 }

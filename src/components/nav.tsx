@@ -7,10 +7,6 @@ import { createClient } from "@/lib/supabase/client";
 const LINKS = [
   { href: "/", label: "Book" },
   { href: "/plan", label: "Plan" },
-  { href: "/transactions", label: "History" },
-  { href: "/accounts", label: "Accounts" },
-  { href: "/recurring", label: "Recurring" },
-  { href: "/people", label: "People" },
 ];
 
 export function Nav({ email }: { email: string }) {

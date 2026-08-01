@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 
 export function Modal({
-  open, title, onClose, children,
+  open, title, onClose, children, wide,
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  wide?: boolean;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -21,7 +22,7 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(28,36,32,0.35)" }} onMouseDown={onClose}>
-      <div className="w-full max-w-sm border border-rule-strong bg-paper-raised shadow-xl"
+      <div className={`w-full ${wide ? "max-w-xl" : "max-w-sm"} border border-rule-strong bg-paper-raised shadow-xl max-h-[90vh] overflow-y-auto`}
         onMouseDown={(e) => e.stopPropagation()}>
         <p className="px-4 pt-3 pb-2 text-sm font-medium border-b border-rule">{title}</p>
         <div className="p-4">{children}</div>
