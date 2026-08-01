@@ -30,9 +30,9 @@ function clampDate(y: number, m: number, day: number): Date {
 }
 
 export default function PlanPage() {
-  const { supabase, accounts, cycles, loading, reload } = useLedger();
+  const { supabase, accounts, balances, cycles, loading, reload } = useLedger();
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
-  const [oneOffs, setOneOffs] = useState<Txn[]>([]);
+  const [allOneOffs, setAllOneOffs] = useState<Txn[]>([]);
   const [doneCounts, setDoneCounts] = useState<Map<string, number>>(new Map());
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<RecurringTemplate | null>(null);
@@ -45,7 +45,9 @@ export default function PlanPage() {
   const [month, setMonth] = useState(nextMonth);
 
   const load = useCallback(async () => {
-    const start = `${month}-01`;
+    // pending one-offs from next month through the viewed month — the whole
+    // stretch feeds the projected-liquid accumulation, not just the viewed month
+    const start = `${nextMonth}-01`;
     const end = toISODate(new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1));
     const [tRes, oRes, cRes] = await Promise.all([
       supabase.from("recurring_templates").select("*").eq("active", true).order("day_of_month"),
@@ -68,13 +70,13 @@ export default function PlanPage() {
       return;
     }
     setTemplates(tRes.data as RecurringTemplate[]);
-    setOneOffs(oRes.data as Txn[]);
+    setAllOneOffs(oRes.data as Txn[]);
     const counts = new Map<string, number>();
     for (const r of (cRes.data ?? []) as { recurring_template_id: string }[]) {
       counts.set(r.recurring_template_id, (counts.get(r.recurring_template_id) ?? 0) + 1);
     }
     setDoneCounts(counts);
-  }, [supabase, month]);
+  }, [supabase, month, nextMonth]);
 
   useEffect(() => {
     load();
@@ -109,24 +111,7 @@ export default function PlanPage() {
     const neg = x.postings.find((p) => p.amount_paise < 0);
     return neg ? -neg.amount_paise : 0;
   };
-  const oneOffIn = oneOffs.filter((x) => oneOffKind(x) === "in").reduce((s, x) => s + oneOffAmount(x), 0);
-  const oneOffOut = oneOffs.filter((x) => oneOffKind(x) === "out").reduce((s, x) => s + oneOffAmount(x), 0);
-  const oneOffBack = oneOffs.filter((x) => oneOffKind(x) === "back").reduce((s, x) => s + oneOffAmount(x), 0);
-
-  // ---- fixed monthly plan (budgets + salary are the same every month);
-  // EMIs count only while their window covers the plan month
-  const monthTemplates = templates.filter((t) => emiActive(t, month));
-  const plannedIn = monthTemplates.filter(isIncome).reduce((s, t) => s + t.amount_paise, 0) + oneOffIn;
-  const committed = monthTemplates
-    .filter((t) => {
-      if (isIncome(t) || isInternal(t)) return false;
-      return accountById(accounts, t.from_account_id)?.subtype !== "credit_card";
-    })
-    .reduce((s, t) => s + t.amount_paise, 0) + oneOffOut;
-  const expectedBack =
-    monthTemplates.reduce((s, t) => s + (t.reimburse_amount_paise ?? 0), 0) + oneOffBack;
-
-  // ---- card dues landing in the plan month (carry-over from this month's cycle)
+  // ---- per-month plan math, so the viewed month and the projection share one brain
   const parentCards = active.filter((a) => a.subtype === "credit_card" && a.parent_id === null);
   const subtreeIds = (card: Account) =>
     [card.id, ...active.filter((a) => a.parent_id === card.id).map((a) => a.id)];
@@ -142,57 +127,99 @@ export default function PlanPage() {
     estimateOnly: boolean; // window too far out — recurring only
   }
 
-  const cardPlans: CardPlan[] = parentCards.flatMap((card) => {
-    const s = card.statement_day, dd = card.due_day;
-    if (!s || !dd) return [];
-    // find the statement whose DUE lands in the plan month
-    for (let k = 0; k < 6; k++) {
-      const st = clampDate(today.getFullYear(), today.getMonth() + k, s);
-      const due = dd > s
-        ? clampDate(st.getFullYear(), st.getMonth(), dd)
-        : clampDate(st.getFullYear(), st.getMonth() + 1, dd);
-      if (toISODate(due).slice(0, 7) !== month) continue;
-      const windowStart = clampDate(st.getFullYear(), st.getMonth() - 1, s);
-      const ids = subtreeIds(card);
-      // real spends already made inside this window (cycle view counts since last cutoff)
-      const windowOpen = windowStart <= today && today < st;
-      const unbilledNow = windowOpen
-        ? ids.reduce((sum, id) => sum + -(cycles.get(id)?.spends_since_paise ?? 0), 0)
-        : 0;
-      // card-charged recurrings landing after today, on or before the statement
-      const recurring = templates
-        .filter((t) => ids.includes(t.from_account_id))
-        .reduce((sum, t) => {
-          for (let j = 0; j < 3; j++) {
-            const occ = clampDate(today.getFullYear(), today.getMonth() + j, t.day_of_month);
-            if (occ > today && occ > windowStart && occ <= st) {
-              // an EMI only charges the card while its window covers the occurrence
-              return emiActive(t, toISODate(occ).slice(0, 7)) ? sum + t.amount_paise : sum;
-            }
-          }
-          return sum;
-        }, 0);
-      // planned one-off card swipes dated inside the window
-      const planned = oneOffs
-        .filter((x) => {
-          const neg = x.postings.find((p) => p.amount_paise < 0);
-          if (!neg || !ids.includes(neg.account_id)) return false;
-          const d = new Date(x.date + "T00:00:00");
-          return d > windowStart && d <= st;
-        })
-        .reduce((sum, x) => sum + oneOffAmount(x), 0);
-      const estimateOnly = !windowOpen && windowStart > today;
-      return [{
-        card, dueDate: due, stmtDate: st, unbilledNow, recurring, planned,
-        total: unbilledNow + recurring + planned,
-        estimateOnly,
-      }];
-    }
-    return [];
-  });
-  const cardDue = cardPlans.reduce((s, c) => s + c.total, 0);
+  const oneOffsFor = (m: string) => allOneOffs.filter((x) => x.date.slice(0, 7) === m);
 
-  const left = plannedIn - committed - cardDue + expectedBack;
+  function cardPlansFor(m: string): CardPlan[] {
+    return parentCards.flatMap((card) => {
+      const s = card.statement_day, dd = card.due_day;
+      if (!s || !dd) return [];
+      // find the statement whose DUE lands in the plan month
+      for (let k = 0; k < 18; k++) {
+        const st = clampDate(today.getFullYear(), today.getMonth() + k, s);
+        const due = dd > s
+          ? clampDate(st.getFullYear(), st.getMonth(), dd)
+          : clampDate(st.getFullYear(), st.getMonth() + 1, dd);
+        if (toISODate(due).slice(0, 7) !== m) continue;
+        const windowStart = clampDate(st.getFullYear(), st.getMonth() - 1, s);
+        const ids = subtreeIds(card);
+        // real spends already made inside this window (cycle view counts since last cutoff)
+        const windowOpen = windowStart <= today && today < st;
+        const unbilledNow = windowOpen
+          ? ids.reduce((sum, id) => sum + -(cycles.get(id)?.spends_since_paise ?? 0), 0)
+          : 0;
+        // card-charged recurrings landing after today, on or before the statement
+        const recurring = templates
+          .filter((t) => ids.includes(t.from_account_id))
+          .reduce((sum, t) => {
+            for (let j = 0; j < 18; j++) {
+              const occ = clampDate(today.getFullYear(), today.getMonth() + j, t.day_of_month);
+              if (occ > today && occ > windowStart && occ <= st) {
+                // an EMI only charges the card while its window covers the occurrence
+                return emiActive(t, toISODate(occ).slice(0, 7)) ? sum + t.amount_paise : sum;
+              }
+            }
+            return sum;
+          }, 0);
+        // planned one-off card swipes dated inside the window
+        const planned = allOneOffs
+          .filter((x) => {
+            const neg = x.postings.find((p) => p.amount_paise < 0);
+            if (!neg || !ids.includes(neg.account_id)) return false;
+            const d = new Date(x.date + "T00:00:00");
+            return d > windowStart && d <= st;
+          })
+          .reduce((sum, x) => sum + oneOffAmount(x), 0);
+        const estimateOnly = !windowOpen && windowStart > today;
+        return [{
+          card, dueDate: due, stmtDate: st, unbilledNow, recurring, planned,
+          total: unbilledNow + recurring + planned,
+          estimateOnly,
+        }];
+      }
+      return [];
+    });
+  }
+
+  function monthPlan(m: string) {
+    const offs = oneOffsFor(m);
+    const offIn = offs.filter((x) => oneOffKind(x) === "in").reduce((s, x) => s + oneOffAmount(x), 0);
+    const offOut = offs.filter((x) => oneOffKind(x) === "out").reduce((s, x) => s + oneOffAmount(x), 0);
+    const offBack = offs.filter((x) => oneOffKind(x) === "back").reduce((s, x) => s + oneOffAmount(x), 0);
+    // fixed monthly plan (budgets + salary are the same every month);
+    // EMIs count only while their window covers the plan month
+    const tpl = templates.filter((t) => emiActive(t, m));
+    const plannedIn = tpl.filter(isIncome).reduce((s, t) => s + t.amount_paise, 0) + offIn;
+    const committed = tpl
+      .filter((t) => {
+        if (isIncome(t) || isInternal(t)) return false;
+        return accountById(accounts, t.from_account_id)?.subtype !== "credit_card";
+      })
+      .reduce((s, t) => s + t.amount_paise, 0) + offOut;
+    const expectedBack = tpl.reduce((s, t) => s + (t.reimburse_amount_paise ?? 0), 0) + offBack;
+    const cardPlans = cardPlansFor(m);
+    const cardDue = cardPlans.reduce((s, c) => s + c.total, 0);
+    return {
+      plannedIn, committed, expectedBack, cardPlans, cardDue,
+      left: plannedIn - committed - cardDue + expectedBack,
+    };
+  }
+
+  const oneOffs = oneOffsFor(month);
+  const { plannedIn, committed, expectedBack, cardPlans, cardDue, left } = monthPlan(month);
+
+  // ---- projected liquid: what's liquid today + every month's left through the viewed month
+  const liquidNow = active
+    .filter((a) => a.is_liquid)
+    .reduce((s, a) => s + (balances.get(a.id)?.balance_paise ?? 0), 0);
+  let projectedLiquid = liquidNow;
+  {
+    let m = nextMonth;
+    while (m <= month) {
+      projectedLiquid += monthPlan(m).left;
+      const [y, mo] = m.split("-").map(Number);
+      m = toISODate(new Date(y, mo, 1)).slice(0, 7);
+    }
+  }
 
   // ---- one-off actions
   async function addOneOff(e: EntryInput) {
@@ -281,6 +308,15 @@ export default function PlanPage() {
           <Stat label="Left ⓘ" v={left} cls={left >= 0 ? "text-ledger" : "text-debit"} />
         </button>
       </section>
+
+      <p className="text-sm text-ink-soft">
+        Liquid today <span className="amount">{formatPaise(liquidNow)}</span>
+        {" → projected by end of "}{monthName}:{" "}
+        <span className={`amount ${projectedLiquid >= 0 ? "text-ledger" : "text-debit"}`}>
+          {formatPaise(projectedLiquid)}
+        </span>
+        <span className="text-xs text-ink-faint"> · liquid accounts + each month&apos;s left from {fmtMonth(nextMonth + "-01")} on; ad-hoc spends not included</span>
+      </p>
 
       <section>
         <h2 className="text-xs uppercase tracking-[0.15em] text-ink-faint mb-2 font-sans font-medium">
@@ -440,7 +476,7 @@ export default function PlanPage() {
 
       <Modal open={leftOpen} title={`How "left" is calculated for ${monthName}`} onClose={() => setLeftOpen(false)}>
         <div className="text-sm space-y-2">
-          <CalcLine label={`Salary + income templates${oneOffIn ? " + one-off income" : ""}`} paise={plannedIn} sign="+" />
+          <CalcLine label="Salary + income templates + one-off income" paise={plannedIn} sign="+" />
           <CalcLine label="Cash committed — recurring paid from banks/cash + budgets + one-off spends" paise={committed} sign="−" />
           <CalcLine label="Card dues landing this month — carry-over bills from the previous cycle" paise={cardDue} sign="−" />
           <CalcLine label="Coming back — expected repayments" paise={expectedBack} sign="+" />
