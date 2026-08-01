@@ -45,12 +45,10 @@ export default function PlanPage() {
   const [month, setMonth] = useState(nextMonth);
 
   const load = useCallback(async () => {
-    // pending one-offs from next month through the viewed month (or a year out,
-    // whichever is further) — feeds projected liquid and the cashflow chart
+    // pending one-offs from next month through the viewed month — the whole
+    // stretch feeds the projected-liquid accumulation, not just the viewed month
     const start = `${nextMonth}-01`;
-    const viewedEnd = toISODate(new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1));
-    const chartEnd = toISODate(new Date(today.getFullYear(), today.getMonth() + 14, 1));
-    const end = viewedEnd > chartEnd ? viewedEnd : chartEnd;
+    const end = toISODate(new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1));
     const [tRes, oRes, cRes] = await Promise.all([
       supabase.from("recurring_templates").select("*").eq("active", true).order("day_of_month"),
       supabase
@@ -228,20 +226,6 @@ export default function PlanPage() {
     }
   }
 
-  // ---- cashflow series for the chart: next 12 months of left + running liquid
-  const chartData: { m: string; left: number; liquid: number }[] = [];
-  {
-    let acc = liquidNow;
-    let m = nextMonth;
-    for (let i = 0; i < 12; i++) {
-      const l = monthPlan(m).left;
-      acc += l;
-      chartData.push({ m, left: l, liquid: acc });
-      const [y, mo] = m.split("-").map(Number);
-      m = toISODate(new Date(y, mo, 1)).slice(0, 7);
-    }
-  }
-
   // ---- one-off actions
   async function addOneOff(e: EntryInput) {
     try {
@@ -338,18 +322,6 @@ export default function PlanPage() {
         </span>
         <span className="text-xs text-ink-faint"> · liquid accounts + each month&apos;s left from {fmtMonth(nextMonth + "-01")} on; ad-hoc spends not included</span>
       </p>
-
-      <section>
-        <h2 className="text-xs uppercase tracking-[0.15em] text-ink-faint mb-2 font-sans font-medium">
-          Cashflow — next 12 months
-        </h2>
-        <div className="border border-rule bg-paper-raised p-3 overflow-x-auto">
-          <CashflowChart data={chartData} />
-          <p className="text-[11px] text-ink-faint mt-1">
-            bars = month&apos;s net (left) · line = projected liquid running total · hover for numbers
-          </p>
-        </div>
-      </section>
 
       <section>
         <h2 className="text-xs uppercase tracking-[0.15em] text-ink-faint mb-2 font-sans font-medium">
@@ -539,61 +511,6 @@ export default function PlanPage() {
         }}
       />
     </div>
-  );
-}
-
-function CashflowChart({ data }: { data: { m: string; left: number; liquid: number }[] }) {
-  const W = 760, H = 230, top = 14, bottom = 30, lx = 6;
-  const slot = (W - lx * 2) / data.length;
-  const vals = [0, ...data.map((d) => d.left), ...data.map((d) => d.liquid)];
-  const max = Math.max(...vals), min = Math.min(...vals);
-  const span = max - min || 1;
-  const y = (v: number) => top + (max - v) * (H - top - bottom) / span;
-  const x = (i: number) => lx + i * slot + slot / 2;
-  const zeroY = y(0);
-  const line = data.map((d, i) => `${x(i)},${y(d.liquid)}`).join(" ");
-
-  const label = (m: string) => {
-    const d = new Date(m + "-01T00:00:00");
-    const s = d.toLocaleDateString("en-IN", { month: "short" });
-    return d.getMonth() === 0 ? `${s} '${String(d.getFullYear()).slice(2)}` : s;
-  };
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[560px] h-auto" role="img"
-      aria-label="Monthly net cashflow and projected liquid, next 12 months">
-      <line x1={lx} x2={W - lx} y1={zeroY} y2={zeroY}
-        stroke="var(--rule-strong)" strokeDasharray="3 3" strokeWidth="1" />
-      {data.map((d, i) => {
-        const bw = Math.min(26, slot * 0.4);
-        const bx = x(i) - bw / 2;
-        const by = d.left >= 0 ? y(d.left) : zeroY;
-        const bh = Math.max(1, Math.abs(y(d.left) - zeroY));
-        return (
-          <g key={d.m}>
-            <title>
-              {`${fmtMonth(d.m + "-01")}\nmonth net: ${formatPaise(d.left)}\nprojected liquid: ${formatPaise(d.liquid)}`}
-            </title>
-            <rect x={x(i) - slot / 2} y={0} width={slot} height={H} fill="transparent" />
-            <rect x={bx} y={by} width={bw} height={bh}
-              fill={d.left >= 0 ? "var(--ledger)" : "var(--debit)"} opacity="0.55" />
-            <text x={x(i)} y={H - 10} textAnchor="middle"
-              fontSize="10" fill="var(--ink-faint)" fontFamily="var(--font-jetbrains-mono), monospace">
-              {label(d.m)}
-            </text>
-          </g>
-        );
-      })}
-      <polyline points={line} fill="none" stroke="var(--ink)" strokeWidth="1.5" />
-      {data.map((d, i) => (
-        <circle key={d.m} cx={x(i)} cy={y(d.liquid)} r="2.5" fill="var(--ink)" />
-      ))}
-      <text x={x(data.length - 1) - 4} y={y(data[data.length - 1].liquid) - 8}
-        textAnchor="end" fontSize="10" fill="var(--ink)"
-        fontFamily="var(--font-jetbrains-mono), monospace">
-        {formatPaise(data[data.length - 1].liquid)}
-      </text>
-    </svg>
   );
 }
 
