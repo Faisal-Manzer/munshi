@@ -6,6 +6,7 @@ import { createEntry, rewriteEntry, type EntryInput } from "@/lib/postings";
 import { Amount } from "@/components/amount";
 import { AccountSelect, NEW_CATEGORY } from "@/components/account-select";
 import { Select } from "@/components/select";
+import { TitleInput, useTitleSuggestions } from "@/components/title-input";
 import { InputModal, Modal } from "@/components/modal";
 import { AccountModal, BLOCK_OPTIONS } from "@/components/account-modal";
 import { CategoriesModal } from "@/components/categories-modal";
@@ -1129,6 +1130,7 @@ function QuickAddRow({
   const [tag, setTag] = useState("");
   const [note, setNote] = useState("");
   const [newCatOpen, setNewCatOpen] = useState(false);
+  const suggestions = useTitleSuggestions(supabase);
 
   const fromChoices = accounts.filter((a) =>
     ["bank", "envelope", "cash", "investment", "credit_card", "receivable", "salary", "other_income"].includes(a.subtype)
@@ -1194,7 +1196,16 @@ function QuickAddRow({
             </button>
           )}
         </td>
-        <td><input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="New entry… (Enter saves)" /></td>
+        <td>
+          <TitleInput value={desc} onChange={setDesc} suggestions={suggestions}
+            placeholder="New entry… (Enter saves)"
+            onPick={(s) => {
+              setDesc(s.title);
+              if (!fromId && s.fromId) setFromId(s.fromId);
+              if (!toId && s.toId) setToId(s.toId);
+              if (!tag && s.tag) setTag(s.tag);
+            }} />
+        </td>
         <td>
           <div className="flex items-center">
             <AccountSelect value={fromId} onChange={setFromId} choices={fromChoices}

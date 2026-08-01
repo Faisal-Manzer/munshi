@@ -6,6 +6,7 @@ import { Amount } from "@/components/amount";
 import { AccountSelect } from "@/components/account-select";
 import { Modal } from "@/components/modal";
 import { TemplateModal } from "@/components/template-form";
+import { TitleInput, useTitleSuggestions } from "@/components/title-input";
 import { createEntry, rewriteEntry, type EntryInput } from "@/lib/postings";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { toISODate } from "@/lib/ledger";
@@ -333,7 +334,7 @@ export default function PlanPage() {
               </tr>
             </thead>
             <tbody>
-              <OneOffAddRow month={month} accounts={active} onCreate={addOneOff} />
+              <OneOffAddRow month={month} accounts={active} onCreate={addOneOff} supabase={supabase} />
               {oneOffs.map((x) => (
                 <OneOffRow key={x.id + x.date + oneOffAmount(x)} txn={x} accounts={accounts}
                   active={active} amountPaise={oneOffAmount(x)}
@@ -490,11 +491,12 @@ function CalcLine({
 }
 
 function OneOffAddRow({
-  month, accounts, onCreate,
+  month, accounts, onCreate, supabase,
 }: {
   month: string;
   accounts: Account[];
   onCreate: (e: EntryInput) => Promise<boolean>;
+  supabase: ReturnType<typeof useLedger>["supabase"];
 }) {
   const [date, setDate] = useState(`${month}-01`);
   const [dateEdit, setDateEdit] = useState(false);
@@ -504,6 +506,7 @@ function OneOffAddRow({
   const [toId, setToId] = useState("");
   const [tag, setTag] = useState("");
   const [note, setNote] = useState("");
+  const suggestions = useTitleSuggestions(supabase);
 
   useEffect(() => setDate(`${month}-01`), [month]);
 
@@ -550,8 +553,16 @@ function OneOffAddRow({
           </button>
         )}
       </td>
-      <td><input value={desc} onChange={(e) => setDesc(e.target.value)}
-        placeholder="Plan a one-off… (Enter saves)" /></td>
+      <td>
+        <TitleInput value={desc} onChange={setDesc} suggestions={suggestions}
+          placeholder="Plan a one-off… (Enter saves)"
+          onPick={(s) => {
+            setDesc(s.title);
+            if (!fromId && s.fromId) setFromId(s.fromId);
+            if (!toId && s.toId) setToId(s.toId);
+            if (!tag && s.tag) setTag(s.tag);
+          }} />
+      </td>
       <td>
         <div className="flex items-center">
           <AccountSelect value={fromId} onChange={setFromId} choices={fromChoices}
