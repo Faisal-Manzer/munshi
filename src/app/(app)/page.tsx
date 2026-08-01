@@ -65,6 +65,7 @@ export default function BookPage() {
   const [receiveBank, setReceiveBank] = useState("");
   const [reconFor, setReconFor] = useState<Account | null>(null);
   const [addPersonOpen, setAddPersonOpen] = useState(false);
+  const [leftOpen, setLeftOpen] = useState(false);
 
   const today = toISODate(new Date());
   const active = useMemo(() => accounts.filter((a) => !a.archived), [accounts]);
@@ -354,7 +355,9 @@ export default function BookPage() {
           <Headline label="card due" paise={totalDue} cls={totalDue > 0 ? "text-debit" : ""} />
           <Headline label="card owed" paise={totalCardOwed} cls={totalCardOwed > 0 ? "text-debit" : ""} />
           <Headline label="coming back" paise={expectedBack} cls="text-ledger" />
-          <Headline label="left" paise={plannedIn - committed - totalCardOwed + expectedBack} cls={plannedIn - committed - totalCardOwed + expectedBack >= 0 ? "text-ledger" : "text-debit"} />
+          <button onClick={() => setLeftOpen(true)} title="How is this calculated?" className="text-right">
+            <Headline label="left ⓘ" paise={plannedIn - committed - totalCardOwed + expectedBack} cls={plannedIn - committed - totalCardOwed + expectedBack >= 0 ? "text-ledger" : "text-debit"} />
+          </button>
           {avoidable > 0 && <Headline label="avoidable" paise={avoidable} cls="text-pending" />}
         </div>
       </div>
@@ -610,6 +613,24 @@ export default function BookPage() {
         </aside>
       </div>
 
+      <Modal open={leftOpen} title="How 'left' is calculated" onClose={() => setLeftOpen(false)}>
+        <div className="text-sm space-y-2">
+          <CalcLine label="Money coming in (salary templates)" paise={plannedIn} sign="+" />
+          <CalcLine label="Cash committed — recurring paid from banks/cash this month (card-charged items excluded: their cash cost is in the card bill)" paise={committed} sign="−" />
+          <CalcLine label="Card owed — full outstanding you'll pay via bills" paise={totalCardOwed} sign="−" />
+          <CalcLine label="Coming back — expected repayments this month" paise={expectedBack} sign="+" />
+          <div className="border-t border-rule-strong pt-2">
+            <CalcLine label="Left" paise={plannedIn - committed - totalCardOwed + expectedBack} sign="=" bold />
+          </div>
+          <p className="text-xs text-ink-faint pt-1">
+            This is planning money, not a bank balance: what remains of the
+            month&apos;s income after every known commitment, if you clear all
+            card debt. Ad-hoc spends you log during the month are not
+            subtracted here — watch the account balances for that.
+          </p>
+        </div>
+      </Modal>
+
       <InputModal
         open={reconFor !== null}
         title={reconFor ? `Reconcile ${reconFor.name}` : ""}
@@ -688,6 +709,22 @@ function Headline({ label, paise, cls = "" }: { label: string; paise: number; cl
     <div className="text-right">
       <p className="text-[10px] uppercase tracking-wider text-ink-faint">{label}</p>
       <p className={`amount ${cls}`}>{formatPaise(paise)}</p>
+    </div>
+  );
+}
+
+function CalcLine({
+  label, paise, sign, bold,
+}: {
+  label: string;
+  paise: number;
+  sign: string;
+  bold?: boolean;
+}) {
+  return (
+    <div className={`flex items-baseline justify-between gap-4 ${bold ? "font-medium" : ""}`}>
+      <p className={bold ? "" : "text-ink-soft"}>{sign} {label}</p>
+      <p className="amount whitespace-nowrap">{formatPaise(paise)}</p>
     </div>
   );
 }
