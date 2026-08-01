@@ -32,6 +32,7 @@ formula, every screen element, and the data model underneath.
 18. [Formatting & display rules](#18-formatting--display-rules)
 19. [Architecture & deployment](#19-architecture--deployment)
 20. [Database migrations](#20-database-migrations)
+21. [Testing](#21-testing)
 
 ---
 
@@ -661,3 +662,49 @@ bottom, and close on outside click, scroll, resize, or Escape.
 | `005_budget_flag.sql` | `recurring_templates.is_budget` |
 | `006_member_functions.sql` | Member-management RPCs (list/add/remove), security-definer, member-gated |
 | `007_liquid_flag.sql` | `accounts.is_liquid` + backfill (bank/cash/envelope → true) |
+
+## 21. Testing
+
+Two layers, both runnable locally.
+
+### Unit tests — `npm test` (Vitest)
+
+All calculation logic lives in pure modules so it can be tested directly;
+the Book and Plan pages call the same functions they render
+(`src/lib/calc.ts` is the shared brain).
+
+| Suite | Covers |
+|---|---|
+| `money.test.ts` | paise formatting (two decimals, Indian grouping, no negative zero), rupee parsing (₹/commas/spaces, rounding, invalid input), format→parse round-trips |
+| `emi.test.ts` | installment indexing across year boundaries, window boundaries (first/last/±1 month), end-date derivation with short-month clamping, single-installment EMIs |
+| `ledger.test.ts` | display-sign flipping by account kind, recursive subtree balances (settled/pending fields), envelope free-money split, next-occurrence day clamping incl. leap years, date helpers |
+| `postings.test.ts` | two-leg and three-leg (split) posting construction, reimbursement clamping, zero-leg avoidance, always-balances property |
+| `calc.test.ts` | template classification (income/internal/budget/lending), one-off classification, card subtree math, current-cycle due/unbilled, projected statement windows (same-month and next-month dues, open vs. future windows, carry-over, EMI last-installment landing, ended-EMI exclusion, far-future months), full month-plan totals, liquid totals, multi-month projected-liquid accumulation |
+
+### Database checks — `npm run test:db`
+
+`supabase/tests/db_checks.sql` runs against a real Postgres via
+`DATABASE_URL` (never stored anywhere). Every statement executes inside
+**one transaction that ends in `ROLLBACK`** — the target database is left
+untouched, so it is safe to point at any environment. Fixtures use fixed
+UUIDs and `@example.invalid` emails that cannot collide with real data.
+
+It verifies, at the database level:
+
+- the deferred balanced-transaction trigger (accepts balanced two- and
+  three-leg entries, rejects unbalanced ones — exercised with
+  `SET CONSTRAINTS ... IMMEDIATE`, which fires the check without committing)
+- check constraints: nonzero postings, statement/due/template day bounds,
+  positive template amounts, free-text tags
+- delete behaviour: transaction→postings cascade, account deletion
+  restricted while postings exist
+- `account_balances` (settled vs. pending split), `stmt_cutoff`
+  (never future, never older than a month, day clamped to month end), and
+  `card_cycle_balances` (billed vs. payments vs. unbilled around the
+  cutoff, pending swipes excluded, sub-card cutoff inheritance)
+- RLS: owners see their rows, strangers see nothing (tables *and* views),
+  `auth.uid()` defaults applied on insert, `ledger_members` closed to
+  direct writes
+- shared-ledger RPCs: non-members refused, members see and edit each
+  other's rows, add lower-cases emails, garbage emails rejected,
+  self-removal refused, removal works

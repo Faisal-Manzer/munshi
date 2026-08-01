@@ -15,6 +15,13 @@ import { PersonModal } from "@/components/person-modal";
 import { TemplateModal } from "@/components/template-form";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { subtreeBalance, toISODate } from "@/lib/ledger";
+import {
+  cardDueNow as cardDueNowOf,
+  cardUnbilled as cardUnbilledOf,
+  isIncomeTemplate,
+  isInternalTemplate,
+  parentCardsOf,
+} from "@/lib/calc";
 import { emiActive, emiInfo, fmtMonth } from "@/lib/emi";
 import { ArrowLeftRight, HandCoins, Pencil, Plus, RotateCcw, Scale, Settings2, Users } from "lucide-react";
 import {
@@ -209,14 +216,8 @@ export default function BookPage() {
   monthRows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   // ---- summary
-  const isIncomeT = (t: RecurringTemplate) =>
-    accountById(accounts, t.from_account_id)?.kind === "income";
-  const isInternalT = (t: RecurringTemplate) => {
-    if (t.is_budget) return false; // budget moves are committed spend
-    const from = accountById(accounts, t.from_account_id);
-    const to = accountById(accounts, t.to_account_id);
-    return from?.kind === "asset" && to?.kind === "asset" && to?.subtype !== "receivable";
-  };
+  const isIncomeT = (t: RecurringTemplate) => isIncomeTemplate(accounts, t);
+  const isInternalT = (t: RecurringTemplate) => isInternalTemplate(accounts, t);
   const plannedIn = monthTemplates.filter(isIncomeT).reduce((s, t) => s + t.amount_paise, 0);
   // cash committed: only templates that take money from bank/cash this month —
   // card-charged items cost cash later, via the card bill (counted in card owed)
@@ -234,20 +235,9 @@ export default function BookPage() {
       return s + (neg ? -neg.amount_paise : 0);
     }, 0);
 
-  const parentCards = active.filter((a) => a.subtype === "credit_card" && a.parent_id === null);
-  const cardDueNow = (card: Account) => {
-    let billed = 0, paid = 0;
-    for (const c of [card, ...active.filter((a) => a.parent_id === card.id)]) {
-      const cy = cycles.get(c.id);
-      if (!cy) continue;
-      billed += -cy.billed_paise;
-      paid += cy.payments_since_paise;
-    }
-    return Math.max(0, billed - paid);
-  };
-  const cardUnbilled = (card: Account) =>
-    [card, ...active.filter((a) => a.parent_id === card.id)]
-      .reduce((s, c) => s + -(cycles.get(c.id)?.spends_since_paise ?? 0), 0);
+  const parentCards = parentCardsOf(active);
+  const cardDueNow = (card: Account) => cardDueNowOf(active, cycles, card);
+  const cardUnbilled = (card: Account) => cardUnbilledOf(active, cycles, card);
   const totalDue = parentCards.reduce((s, c) => s + cardDueNow(c), 0);
   const totalCardOwed = parentCards.reduce(
     (s, c) => s + cardDueNow(c) + cardUnbilled(c),

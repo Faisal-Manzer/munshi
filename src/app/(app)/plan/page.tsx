@@ -11,22 +11,26 @@ import { DateInput } from "@/components/date-input";
 import { createEntry, rewriteEntry, type EntryInput } from "@/lib/postings";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { toISODate } from "@/lib/ledger";
-import { emiActive, emiInfo, fmtMonth } from "@/lib/emi";
+import { emiInfo, fmtMonth } from "@/lib/emi";
+import {
+  isIncomeTemplate,
+  isInternalTemplate,
+  liquidNowOf,
+  monthPlan,
+  oneOffAmount,
+  oneOffsFor,
+  projectedLiquidThrough,
+  type PlanContext,
+  type Txn,
+} from "@/lib/calc";
 import { Pencil, Plus } from "lucide-react";
-import type { Account, Posting, RecurringTemplate, Transaction } from "@/lib/types";
-
-type Txn = Transaction & { postings: Posting[] };
+import type { Account, RecurringTemplate } from "@/lib/types";
 
 function fmtDate(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
   });
-}
-
-function clampDate(y: number, m: number, day: number): Date {
-  const last = new Date(y, m + 1, 0).getDate();
-  return new Date(y, m, Math.min(day, last));
 }
 
 export default function PlanPage() {
@@ -84,147 +88,19 @@ export default function PlanPage() {
 
   const active = useMemo(() => accounts.filter((a) => !a.archived), [accounts]);
 
-  const isIncome = (t: RecurringTemplate) =>
-    accountById(accounts, t.from_account_id)?.kind === "income";
-  const isInternal = (t: RecurringTemplate) => {
-    if (t.is_budget) return false;
-    const from = accountById(accounts, t.from_account_id);
-    const to = accountById(accounts, t.to_account_id);
-    return from?.kind === "asset" && to?.kind === "asset" && to?.subtype !== "receivable";
-  };
+  const isIncome = (t: RecurringTemplate) => isIncomeTemplate(accounts, t);
+  const isInternal = (t: RecurringTemplate) => isInternalTemplate(accounts, t);
 
-  // ---- one-off classification (pending txns in the plan month)
-  const oneOffKind = (x: Txn): "in" | "out" | "back" | "card" | "internal" => {
-    const neg = x.postings.find((p) => p.amount_paise < 0);
-    const pos = x.postings.find(
-      (p) => p.amount_paise > 0 && p.account_id !== x.reimburse_account_id
-    );
-    const from = neg ? accountById(accounts, neg.account_id) : undefined;
-    const to = pos ? accountById(accounts, pos.account_id) : undefined;
-    if (from?.kind === "income") return "in";
-    if (from?.subtype === "receivable") return "back";
-    if (from?.subtype === "credit_card") return "card";
-    if (to?.kind === "asset" && to?.subtype !== "receivable") return "internal";
-    return "out";
-  };
-  const oneOffAmount = (x: Txn) => {
-    const neg = x.postings.find((p) => p.amount_paise < 0);
-    return neg ? -neg.amount_paise : 0;
-  };
-  // ---- per-month plan math, so the viewed month and the projection share one brain
-  const parentCards = active.filter((a) => a.subtype === "credit_card" && a.parent_id === null);
-  const subtreeIds = (card: Account) =>
-    [card.id, ...active.filter((a) => a.parent_id === card.id).map((a) => a.id)];
+  // ---- per-month plan math lives in lib/calc — the viewed month and the
+  // projection share one brain, and it's unit-tested there
+  const ctx: PlanContext = { accounts, active, templates, allOneOffs, cycles, today };
 
-  interface CardPlan {
-    card: Account;
-    dueDate: Date;
-    stmtDate: Date;
-    unbilledNow: number;   // real swipes already in the cycle window
-    recurring: number;     // card-charged templates still to land before the statement
-    planned: number;       // one-off pending card txns inside the window
-    total: number;
-    estimateOnly: boolean; // window too far out — recurring only
-  }
-
-  const oneOffsFor = (m: string) => allOneOffs.filter((x) => x.date.slice(0, 7) === m);
-
-  function cardPlansFor(m: string): CardPlan[] {
-    // months between now and the plan month — the due-landing statement is
-    // within ±2 of that, however far out the plan month is
-    const ahead =
-      Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)) - 1
-      - (today.getFullYear() * 12 + today.getMonth());
-    return parentCards.flatMap((card) => {
-      const s = card.statement_day, dd = card.due_day;
-      if (!s || !dd) return [];
-      // find the statement whose DUE lands in the plan month
-      for (let k = Math.max(0, ahead - 2); k <= ahead + 2; k++) {
-        const st = clampDate(today.getFullYear(), today.getMonth() + k, s);
-        const due = dd > s
-          ? clampDate(st.getFullYear(), st.getMonth(), dd)
-          : clampDate(st.getFullYear(), st.getMonth() + 1, dd);
-        if (toISODate(due).slice(0, 7) !== m) continue;
-        const windowStart = clampDate(st.getFullYear(), st.getMonth() - 1, s);
-        const ids = subtreeIds(card);
-        // real spends already made inside this window (cycle view counts since last cutoff)
-        const windowOpen = windowStart <= today && today < st;
-        const unbilledNow = windowOpen
-          ? ids.reduce((sum, id) => sum + -(cycles.get(id)?.spends_since_paise ?? 0), 0)
-          : 0;
-        // card-charged recurrings landing after today, on or before the statement
-        const recurring = templates
-          .filter((t) => ids.includes(t.from_account_id))
-          .reduce((sum, t) => {
-            for (let j = 0; j <= k + 1; j++) {
-              const occ = clampDate(today.getFullYear(), today.getMonth() + j, t.day_of_month);
-              if (occ > today && occ > windowStart && occ <= st) {
-                // an EMI only charges the card while its window covers the occurrence
-                return emiActive(t, toISODate(occ).slice(0, 7)) ? sum + t.amount_paise : sum;
-              }
-            }
-            return sum;
-          }, 0);
-        // planned one-off card swipes dated inside the window
-        const planned = allOneOffs
-          .filter((x) => {
-            const neg = x.postings.find((p) => p.amount_paise < 0);
-            if (!neg || !ids.includes(neg.account_id)) return false;
-            const d = new Date(x.date + "T00:00:00");
-            return d > windowStart && d <= st;
-          })
-          .reduce((sum, x) => sum + oneOffAmount(x), 0);
-        const estimateOnly = !windowOpen && windowStart > today;
-        return [{
-          card, dueDate: due, stmtDate: st, unbilledNow, recurring, planned,
-          total: unbilledNow + recurring + planned,
-          estimateOnly,
-        }];
-      }
-      return [];
-    });
-  }
-
-  function monthPlan(m: string) {
-    const offs = oneOffsFor(m);
-    const offIn = offs.filter((x) => oneOffKind(x) === "in").reduce((s, x) => s + oneOffAmount(x), 0);
-    const offOut = offs.filter((x) => oneOffKind(x) === "out").reduce((s, x) => s + oneOffAmount(x), 0);
-    const offBack = offs.filter((x) => oneOffKind(x) === "back").reduce((s, x) => s + oneOffAmount(x), 0);
-    // fixed monthly plan (budgets + salary are the same every month);
-    // EMIs count only while their window covers the plan month
-    const tpl = templates.filter((t) => emiActive(t, m));
-    const plannedIn = tpl.filter(isIncome).reduce((s, t) => s + t.amount_paise, 0) + offIn;
-    const committed = tpl
-      .filter((t) => {
-        if (isIncome(t) || isInternal(t)) return false;
-        return accountById(accounts, t.from_account_id)?.subtype !== "credit_card";
-      })
-      .reduce((s, t) => s + t.amount_paise, 0) + offOut;
-    const expectedBack = tpl.reduce((s, t) => s + (t.reimburse_amount_paise ?? 0), 0) + offBack;
-    const cardPlans = cardPlansFor(m);
-    const cardDue = cardPlans.reduce((s, c) => s + c.total, 0);
-    return {
-      plannedIn, committed, expectedBack, cardPlans, cardDue,
-      left: plannedIn - committed - cardDue + expectedBack,
-    };
-  }
-
-  const oneOffs = oneOffsFor(month);
-  const { plannedIn, committed, expectedBack, cardPlans, cardDue, left } = monthPlan(month);
+  const oneOffs = oneOffsFor(allOneOffs, month);
+  const { plannedIn, committed, expectedBack, cardPlans, cardDue, left } = monthPlan(ctx, month);
 
   // ---- projected liquid: what's liquid today + every month's left through the viewed month
-  const liquidNow = active
-    .filter((a) => a.is_liquid)
-    .reduce((s, a) => s + (balances.get(a.id)?.balance_paise ?? 0), 0);
-  let projectedLiquid = liquidNow;
-  {
-    let m = nextMonth;
-    while (m <= month) {
-      projectedLiquid += monthPlan(m).left;
-      const [y, mo] = m.split("-").map(Number);
-      m = toISODate(new Date(y, mo, 1)).slice(0, 7);
-    }
-  }
+  const liquidNow = liquidNowOf(active, balances);
+  const projectedLiquid = projectedLiquidThrough(ctx, liquidNow, nextMonth, month);
 
   // ---- one-off actions
   async function addOneOff(e: EntryInput) {

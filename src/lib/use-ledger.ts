@@ -54,6 +54,4 @@ export function useLedger() {
   return { supabase, accounts, balances, cycles, loading, error, reload };
 }
 
-export function accountById(accounts: Account[], id: string | null) {
-  return accounts.find((a) => a.id === id);
-}
+export { accountById } from "./calc";
