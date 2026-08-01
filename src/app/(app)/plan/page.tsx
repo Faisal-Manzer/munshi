@@ -39,7 +39,6 @@ export default function PlanPage() {
   const [error, setError] = useState<string | null>(null);
 
   const today = new Date();
-  const todayISO = toISODate(today);
   // plan is for NEXT month by default — this month is assumed to resolve itself
   const nextMonth = toISODate(new Date(today.getFullYear(), today.getMonth() + 1, 1)).slice(0, 7);
   const [month, setMonth] = useState(nextMonth);
@@ -242,20 +241,21 @@ export default function PlanPage() {
 
   function shiftMonth(delta: number) {
     const [y, m] = month.split("-").map(Number);
-    setMonth(toISODate(new Date(y, m - 1 + delta, 1)).slice(0, 7));
+    const next = toISODate(new Date(y, m - 1 + delta, 1)).slice(0, 7);
+    if (next < nextMonth) return; // Plan is future-only — the Book owns now and the past
+    setMonth(next);
   }
 
   if (loading) return <p className="text-sm text-ink-faint">Loading…</p>;
 
   const monthName = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1)
     .toLocaleDateString("en-IN", { month: "long", year: "numeric" });
-  const currentMonth = todayISO.slice(0, 7);
-  const isPastOrCurrent = month <= currentMonth;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3 flex-wrap">
-        <button onClick={() => shiftMonth(-1)} className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft">←</button>
+        <button onClick={() => shiftMonth(-1)} disabled={month <= nextMonth}
+          className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft disabled:opacity-30 disabled:hover:bg-transparent">←</button>
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-ink-faint">Plan</p>
           <h1 className="text-3xl">{monthName}</h1>
@@ -266,11 +266,6 @@ export default function PlanPage() {
             className="text-xs text-ink-faint hover:text-ledger underline decoration-dotted">
             back to next month
           </button>
-        )}
-        {isPastOrCurrent && (
-          <p className="text-xs text-pending">
-            {month === currentMonth ? "current" : "past"} month — the Book is the source of truth here; plan ahead instead
-          </p>
         )}
       </div>
 

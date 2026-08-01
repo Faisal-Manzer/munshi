@@ -80,6 +80,7 @@ export default function BookPage() {
   const [tplEdit, setTplEdit] = useState<RecurringTemplate | null>(null);
   const [splitFor, setSplitFor] = useState<TxnRow | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [minMonth, setMinMonth] = useState<string | null>(null);
 
   const today = toISODate(new Date());
   const active = useMemo(() => accounts.filter((a) => !a.archived), [accounts]);
@@ -112,6 +113,18 @@ export default function BookPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // earliest logged month bounds backward navigation — no empty pre-history months
+  useEffect(() => {
+    supabase
+      .from("transactions")
+      .select("date")
+      .order("date")
+      .limit(1)
+      .then(({ data }) => {
+        setMinMonth((data?.[0]?.date ?? toISODate(new Date())).slice(0, 7));
+      });
+  }, [supabase]);
 
   const refreshAll = useCallback(
     () => Promise.all([load(), reload()]),
@@ -342,9 +355,16 @@ export default function BookPage() {
     await refreshAll();
   }
 
+  const currentMonth = today.slice(0, 7);
+  const canPrev = minMonth !== null && month > minMonth;
+  const canNext = month < currentMonth; // Book stops at today — Plan owns the future
+
   function shiftMonth(delta: number) {
     const [y, m] = month.split("-").map(Number);
-    setMonth(toISODate(new Date(y, m - 1 + delta, 1)).slice(0, 7));
+    const next = toISODate(new Date(y, m - 1 + delta, 1)).slice(0, 7);
+    if (minMonth !== null && next < minMonth) return;
+    if (next > currentMonth) return;
+    setMonth(next);
   }
 
   if (loading) return <p className="text-sm text-ink-faint">Loading the book…</p>;
@@ -363,9 +383,11 @@ export default function BookPage() {
       {/* header */}
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => shiftMonth(-1)} className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft">←</button>
+          <button onClick={() => shiftMonth(-1)} disabled={!canPrev}
+            className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft disabled:opacity-30 disabled:hover:bg-transparent">←</button>
           <h1 className="text-3xl">{monthName}</h1>
-          <button onClick={() => shiftMonth(1)} className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft">→</button>
+          <button onClick={() => shiftMonth(1)} disabled={!canNext}
+            className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft disabled:opacity-30 disabled:hover:bg-transparent">→</button>
         </div>
         <div className="flex gap-5 text-sm flex-wrap">
           <Headline label="in" paise={plannedIn} cls="text-ledger" />
@@ -1177,7 +1199,8 @@ function QuickAddRow({
       await createEntry(supabase, {
         date,
         description: desc.trim(),
-        status: "done",
+        // future-dated = planned, not happened yet — lands as pending, click "paid" when it does
+        status: date > toISODate(new Date()) ? "pending" : "done",
         fromAccountId: fromId,
         toAccountId: toId || spends?.id || "",
         amountPaise: paise,
@@ -1238,8 +1261,9 @@ function QuickAddRow({
         <td><input value={note} onChange={(e) => setNote(e.target.value)}
           placeholder="note" className="text-xs" /></td>
         <td className="text-right">
-          <button onClick={submit} className="text-ledger text-xs font-medium px-2 py-1.5 hover:underline">
-            Add ↵
+          <button onClick={submit} className="text-ledger text-xs font-medium px-2 py-1.5 hover:underline whitespace-nowrap"
+            title={date > toISODate(new Date()) ? "Future date — saved as planned (pending)" : "Saved as done"}>
+            {date > toISODate(new Date()) ? "Plan ↵" : "Add ↵"}
           </button>
         </td>
       </tr>
