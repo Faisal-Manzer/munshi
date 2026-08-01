@@ -16,7 +16,7 @@ import { TemplateModal } from "@/components/template-form";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { subtreeBalance, toISODate } from "@/lib/ledger";
 import { emiActive, emiInfo, fmtMonth } from "@/lib/emi";
-import { HandCoins, Pencil, Plus, RotateCcw, Scale, Settings2, Users } from "lucide-react";
+import { ArrowLeftRight, HandCoins, Pencil, Plus, RotateCcw, Scale, Settings2, Users } from "lucide-react";
 import {
   DEFAULT_TAGS,
   type Account,
@@ -80,6 +80,7 @@ export default function BookPage() {
   const [personView, setPersonView] = useState<Account | null>(null);
   const [tplEdit, setTplEdit] = useState<RecurringTemplate | null>(null);
   const [splitFor, setSplitFor] = useState<TxnRow | null>(null);
+  const [coverFor, setCoverFor] = useState<TxnRow | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [minMonth, setMinMonth] = useState<string | null>(null);
 
@@ -520,6 +521,7 @@ export default function BookPage() {
                     expanded={expanded === row.txn.id}
                     onToggleExpand={() => setExpanded(expanded === row.txn.id ? null : row.txn.id)}
                     onSplit={() => setSplitFor(row)}
+                    onCover={() => setCoverFor(row)}
                     onSave={saveEdit}
                     onPatch={patchTxn}
                     onDelete={() => remove(row)}
@@ -858,6 +860,30 @@ export default function BookPage() {
         onClose={() => setTplEdit(null)}
       />
 
+      <CoverModal
+        row={coverFor}
+        accounts={active}
+        onSave={async (sourceId, paise) => {
+          if (!coverFor?.fromId) return;
+          try {
+            await createEntry(supabase, {
+              date: today,
+              description: `Cover: ${coverFor.txn.description}`,
+              status: "done",
+              fromAccountId: sourceId,
+              toAccountId: coverFor.fromId,
+              amountPaise: paise,
+            });
+            setError(null);
+            setCoverFor(null);
+            await refreshAll();
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "failed");
+          }
+        }}
+        onClose={() => setCoverFor(null)}
+      />
+
       <SplitModal
         row={splitFor}
         people={active.filter((a) => a.subtype === "receivable")}
@@ -872,6 +898,59 @@ export default function BookPage() {
         onClose={() => setSplitFor(null)}
       />
     </div>
+  );
+}
+
+function CoverModal({
+  row, accounts, onSave, onClose,
+}: {
+  row: TxnRow | null;
+  accounts: Account[];
+  onSave: (sourceId: string, paise: number) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [sourceId, setSourceId] = useState("");
+  const [amt, setAmt] = useState("");
+  const txnId = row?.txn.id;
+
+  useEffect(() => {
+    if (!row) return;
+    setSourceId("");
+    setAmt(String(row.amountPaise / 100));
+    // re-seed whenever a different row opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txnId]);
+
+  if (!row) return null;
+  const target = accountById(accounts, row.fromId);
+  const sources = accounts.filter(
+    (a) => ["bank", "cash", "envelope"].includes(a.subtype) && a.id !== row.fromId
+  );
+  const paise = parseRupees(amt);
+  return (
+    <Modal open title={`Cover "${row.txn.description}"`} onClose={onClose}>
+      <p className="text-xs text-ink-soft mb-2">
+        {target?.name} paid this as a stand-in — record the transfer that
+        refills it from the account that was really meant to pay.
+      </p>
+      <Select chrome value={sourceId} onChange={setSourceId} placeholder="Pull funds from…"
+        groups={[{ options: sources.map((a) => ({ value: a.id, label: `${a.name} → ${target?.name}` })) }]} />
+      <input value={amt} onChange={(e) => setAmt(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && sourceId && paise && paise > 0 && onSave(sourceId, paise)}
+        inputMode="decimal" placeholder="Amount ₹"
+        className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised amount mt-2" />
+      <div className="flex justify-end gap-2 mt-4">
+        <button onClick={onClose} className="text-sm text-ink-soft px-3 py-1.5 hover:text-ink">
+          Cancel
+        </button>
+        <button
+          onClick={() => sourceId && paise && paise > 0 && onSave(sourceId, paise)}
+          disabled={!sourceId || !paise || paise <= 0}
+          className="text-sm bg-ledger text-paper-raised px-4 py-1.5 hover:opacity-90 disabled:opacity-50">
+          Record transfer
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -991,7 +1070,7 @@ function SideBlock({
 }
 
 function TxnEditRow({
-  row, accounts, active, today, expanded, onToggleExpand, onSplit, onSave, onPatch, onDelete,
+  row, accounts, active, today, expanded, onToggleExpand, onSplit, onCover, onSave, onPatch, onDelete,
 }: {
   row: TxnRow;
   accounts: Account[];
@@ -1000,6 +1079,7 @@ function TxnEditRow({
   expanded: boolean;
   onToggleExpand: () => void;
   onSplit: () => void;
+  onCover: () => void;
   onSave: (row: TxnRow, patch: Partial<EntryInput>) => void;
   onPatch: (id: string, patch: Partial<Transaction>) => void;
   onDelete: () => void;
@@ -1135,6 +1215,12 @@ function TxnEditRow({
           onClick={onSplit}>
           <Users size={12} className={t.reimburse_account_id ? "text-ledger" : undefined} />
         </IconBtn>
+        {from && ["bank", "cash", "envelope"].includes(from.subtype) && (
+          <IconBtn title={`Paid from ${from.name} as a stand-in? Pull the money over from another account`}
+            onClick={onCover}>
+            <ArrowLeftRight size={12} />
+          </IconBtn>
+        )}
         <button onClick={onDelete} className="text-ink-faint hover:text-debit ml-1">×</button>
       </td>
     </tr>
