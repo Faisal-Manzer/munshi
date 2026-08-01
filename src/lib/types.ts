@@ -28,6 +28,7 @@ export interface Account {
   reported_at: string | null;
   sort_order: number;
   archived: boolean;
+  is_liquid: boolean; // spendable cash — used for liquid totals and cash lists
 }
 
 export type TxnStatus = "pending" | "done";

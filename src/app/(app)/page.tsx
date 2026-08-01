@@ -87,7 +87,7 @@ export default function BookPage() {
   const today = toISODate(new Date());
   const active = useMemo(() => accounts.filter((a) => !a.archived), [accounts]);
   const banks = useMemo(
-    () => active.filter((a) => ["bank", "cash"].includes(a.subtype)),
+    () => active.filter((a) => a.is_liquid),
     [active]
   );
 
@@ -924,7 +924,7 @@ function CoverModal({
   if (!row) return null;
   const target = accountById(accounts, row.fromId);
   const sources = accounts.filter(
-    (a) => ["bank", "cash", "envelope"].includes(a.subtype) && a.id !== row.fromId
+    (a) => a.is_liquid && a.id !== row.fromId
   );
   const paise = parseRupees(amt);
   return (
@@ -1215,7 +1215,7 @@ function TxnEditRow({
           onClick={onSplit}>
           <Users size={12} className={t.reimburse_account_id ? "text-ledger" : undefined} />
         </IconBtn>
-        {from && ["bank", "cash", "envelope"].includes(from.subtype) && (
+        {from?.is_liquid && (
           <IconBtn title={`Paid from ${from.name} as a stand-in? Pull the money over from another account`}
             onClick={onCover}>
             <ArrowLeftRight size={12} />
@@ -1254,7 +1254,7 @@ function QuickAddRow({
   const toChoices = accounts.filter((a) =>
     !["salary", "other_income", "opening_balance"].includes(a.subtype)
   );
-  const spends = accounts.find((a) => a.name === "Spends" && a.kind === "expense");
+  const defaultCat = accounts.find((a) => a.kind === "expense"); // first category = default destination
 
   async function createCategory(name: string) {
     if (!name.trim()) return;
@@ -1280,7 +1280,7 @@ function QuickAddRow({
         description: desc.trim(),
         status: isPlanned ? "pending" : "done",
         fromAccountId: fromId,
-        toAccountId: toId || spends?.id || "",
+        toAccountId: toId || defaultCat?.id || "",
         amountPaise: paise,
         tag: tag.trim() || null,
         notes: note.trim() || null,
@@ -1318,7 +1318,7 @@ function QuickAddRow({
             <AccountSelect value={fromId} onChange={setFromId} choices={fromChoices}
               placeholder="from…" className="w-1/2" />
             <span className="text-ink-faint text-xs">→</span>
-            <AccountSelect value={toId} choices={toChoices} allowCreate placeholder="Spends"
+            <AccountSelect value={toId} choices={toChoices} allowCreate placeholder={defaultCat?.name ?? "category…"}
               onChange={(v) => (v === NEW_CATEGORY ? setNewCatOpen(true) : setToId(v))}
               className="w-1/2" />
           </div>

@@ -59,10 +59,14 @@ export function AccountModal({
     editing?.credit_limit_paise ? String(editing.credit_limit_paise / 100) : ""
   );
   const [opening, setOpening] = useState("");
+  const [liquid, setLiquid] = useState<boolean | null>(editing ? editing.is_liquid : null);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const active = accounts.filter((a) => !a.archived);
+  // sensible default for new accounts; the checkbox below overrides
+  const effLiquid = liquid ?? (opt ? ["bank", "cash", "envelope"].includes(opt.subtype) : false);
+  const liquidToggleable = editing ? editing.kind === "asset" : opt?.kind === "asset";
   const isCard = editing
     ? editing.subtype === "credit_card" && editing.parent_id === null
     : opt?.subtype === "credit_card" && !opt.needsParent;
@@ -86,6 +90,7 @@ export function AccountModal({
           statement_day: stmtDay ? Number(stmtDay) : null,
           due_day: dueDay ? Number(dueDay) : null,
           credit_limit_paise: parseRupees(limit),
+          is_liquid: effLiquid,
         })
         .eq("id", editing.id);
       setSaving(false);
@@ -115,6 +120,7 @@ export function AccountModal({
         statement_day: stmtDay ? Number(stmtDay) : null,
         credit_limit_paise: parseRupees(limit),
         person_name: opt.subtype === "receivable" ? name.trim() : null,
+        is_liquid: effLiquid,
       })
       .select()
       .single();
@@ -208,6 +214,14 @@ export function AccountModal({
           <input className={input} value={opening} onChange={(e) => setOpening(e.target.value)}
             placeholder={opt?.kind === "liability" ? "Current outstanding ₹ (optional)" : "Current balance ₹ (optional)"}
             inputMode="decimal" />
+        )}
+        {liquidToggleable && (
+          <label className="flex items-center gap-2 text-sm text-ink-soft">
+            <input type="checkbox" checked={effLiquid}
+              onChange={(e) => setLiquid(e.target.checked)} />
+            Liquid — spendable cash, counted in liquid totals and offered for
+            transfers/receives
+          </label>
         )}
         {err && <p className="text-sm text-debit">{err}</p>}
         <div className="flex gap-2">
