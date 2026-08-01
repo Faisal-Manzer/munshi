@@ -10,6 +10,7 @@ export interface EntryInput {
   reimburseAccountId?: string | null; // person expected to pay part back
   reimbursePaise?: number | null;     // must be < amountPaise
   recurringTemplateId?: string | null;
+  tag?: string | null;
   notes?: string | null;
 }
 
@@ -44,6 +45,7 @@ export async function createEntry(supabase: SupabaseClient, e: EntryInput) {
       reimburse_account_id: e.reimburseAccountId ?? null,
       reimburse_amount_paise: e.reimbursePaise ?? null,
       recurring_template_id: e.recurringTemplateId ?? null,
+      tag: e.tag ?? null,
       notes: e.notes ?? null,
     })
     .select()
@@ -72,6 +74,7 @@ export async function rewriteEntry(
       status: e.status,
       reimburse_account_id: e.reimburseAccountId ?? null,
       reimburse_amount_paise: e.reimbursePaise ?? null,
+      tag: e.tag ?? null,
     })
     .eq("id", txnId);
   if (error) throw error;
