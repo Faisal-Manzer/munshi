@@ -160,7 +160,9 @@ export default function BookPage() {
   }
   // EMIs outside their window (ended / not yet started) don't project into this month
   const monthTemplates = templates.filter((t) => emiActive(t, month));
-  for (const t of monthTemplates) {
+  // past months show only what was actually logged — no projected/receive rows
+  const isPastMonth = month < today.slice(0, 7);
+  for (const t of isPastMonth ? [] : monthTemplates) {
     if (!txns.some((x) => x.recurring_template_id === t.id)) {
       const day = Math.min(t.day_of_month, daysInMonth);
       rows.push({
@@ -504,7 +506,11 @@ export default function BookPage() {
             </tbody>
           </table>
           {rows.length === 0 && (
-            <p className="text-sm text-ink-faint p-4">Empty month — add an entry above.</p>
+            <p className="text-sm text-ink-faint p-4">
+              {isPastMonth
+                ? "Nothing was logged this month — past months show only real entries, nothing projected."
+                : "Empty month — add an entry above."}
+            </p>
           )}
         </div>
 
