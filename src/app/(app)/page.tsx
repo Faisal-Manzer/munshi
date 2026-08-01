@@ -7,6 +7,7 @@ import { Amount } from "@/components/amount";
 import { AccountSelect, NEW_CATEGORY } from "@/components/account-select";
 import { Select } from "@/components/select";
 import { TitleInput, useTitleSuggestions } from "@/components/title-input";
+import { DateInput } from "@/components/date-input";
 import { InputModal, Modal } from "@/components/modal";
 import { AccountModal, BLOCK_OPTIONS } from "@/components/account-modal";
 import { CategoriesModal } from "@/components/categories-modal";
@@ -1013,7 +1014,6 @@ function TxnEditRow({
   const [desc, setDesc] = useState(t.description);
   const [amount, setAmount] = useState(String(row.amountPaise / 100));
   const [amountFocus, setAmountFocus] = useState(false);
-  const [dateEdit, setDateEdit] = useState(false);
 
   if (row.complex) {
     // multi-leg entry (e.g. opening balances) — read-only so it can't be mangled
@@ -1072,17 +1072,8 @@ function TxnEditRow({
   return (
     <tr className={pending ? "bg-pending-soft/40" : ""}>
       <td>
-        {dateEdit ? (
-          <input type="date" value={t.date} autoFocus
-            onChange={(e) => onSave(row, { date: e.target.value })}
-            onBlur={() => setDateEdit(false)}
-            className="amount" />
-        ) : (
-          <button onClick={() => setDateEdit(true)}
-            className="amount text-ink-faint px-2 py-1.5 w-full text-left whitespace-nowrap hover:text-ink">
-            {fmtDate(t.date)}
-          </button>
-        )}
+        <DateInput value={t.date} onChange={(iso) => onSave(row, { date: iso })}
+          className="text-ink-faint" />
       </td>
       <td>
         <input value={desc} onChange={(e) => setDesc(e.target.value)}
@@ -1159,7 +1150,6 @@ function QuickAddRow({
   onError: (m: string | null) => void;
 }) {
   const [date, setDate] = useState(() => toISODate(new Date()));
-  const [dateEdit, setDateEdit] = useState(false);
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
   const [fromId, setFromId] = useState("");
@@ -1225,17 +1215,7 @@ function QuickAddRow({
     <>
       <tr className="bg-ledger-soft/50" onKeyDown={(e) => e.key === "Enter" && submit()}>
         <td>
-          {dateEdit ? (
-            <input type="date" value={date} autoFocus
-              onChange={(e) => setDate(e.target.value)}
-              onBlur={() => setDateEdit(false)}
-              className="amount" />
-          ) : (
-            <button onClick={() => setDateEdit(true)}
-              className="amount px-2 py-1.5 w-full text-left whitespace-nowrap hover:text-ledger">
-              {fmtDate(date)}
-            </button>
-          )}
+          <DateInput value={date} onChange={setDate} />
         </td>
         <td>
           <TitleInput value={desc} onChange={setDesc} suggestions={suggestions}

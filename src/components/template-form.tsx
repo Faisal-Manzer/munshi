@@ -5,7 +5,9 @@ import { useLedger } from "@/lib/use-ledger";
 import { Modal } from "@/components/modal";
 import { Select } from "@/components/select";
 import { accountGroups } from "@/components/account-select";
+import { DateInput } from "@/components/date-input";
 import { parseRupees } from "@/lib/money";
+import { toISODate } from "@/lib/ledger";
 import {
   RECURRING_KIND_LABEL,
   type Account,
@@ -145,11 +147,19 @@ function TemplateForm({
       <input className={input} value={installments} onChange={(e) => setInstallments(e.target.value)}
         placeholder="Total installments (EMIs, optional)" inputMode="numeric" />
       {installments && (
-        <label className="flex items-center gap-2 text-xs text-ink-soft">
+        <div className="flex items-center gap-2 text-xs text-ink-soft">
           <span className="whitespace-nowrap">First installment</span>
-          <input type="date" className={`${input} flex-1`} value={startDate}
-            onChange={(e) => setStartDate(e.target.value)} />
-        </label>
+          <div className="flex-1">
+            {startDate ? (
+              <DateInput chrome value={startDate} onChange={setStartDate} />
+            ) : (
+              <button type="button" onClick={() => setStartDate(toISODate(new Date()))}
+                className="border border-rule px-2 py-1.5 text-sm bg-paper-raised w-full text-left text-ink-faint">
+                pick date…
+              </button>
+            )}
+          </div>
+        </div>
       )}
       <Select chrome value={personId} onChange={setPersonId} placeholder="Someone repays part? (optional)"
         groups={[{ options: [{ value: "", label: "No one repays" },

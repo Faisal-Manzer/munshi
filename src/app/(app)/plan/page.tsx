@@ -7,6 +7,7 @@ import { AccountSelect } from "@/components/account-select";
 import { Modal } from "@/components/modal";
 import { TemplateModal } from "@/components/template-form";
 import { TitleInput, useTitleSuggestions } from "@/components/title-input";
+import { DateInput } from "@/components/date-input";
 import { createEntry, rewriteEntry, type EntryInput } from "@/lib/postings";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { toISODate } from "@/lib/ledger";
@@ -511,7 +512,6 @@ function OneOffAddRow({
   supabase: ReturnType<typeof useLedger>["supabase"];
 }) {
   const [date, setDate] = useState(`${month}-01`);
-  const [dateEdit, setDateEdit] = useState(false);
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
   const [fromId, setFromId] = useState("");
@@ -553,17 +553,7 @@ function OneOffAddRow({
   return (
     <tr className="bg-ledger-soft/50" onKeyDown={(e) => e.key === "Enter" && submit()}>
       <td>
-        {dateEdit ? (
-          <input type="date" value={date} autoFocus
-            onChange={(e) => setDate(e.target.value)}
-            onBlur={() => setDateEdit(false)}
-            className="amount" />
-        ) : (
-          <button onClick={() => setDateEdit(true)}
-            className="amount px-2 py-1.5 w-full text-left whitespace-nowrap hover:text-ledger">
-            {fmtDate(date)}
-          </button>
-        )}
+        <DateInput value={date} onChange={setDate} />
       </td>
       <td>
         <TitleInput value={desc} onChange={setDesc} suggestions={suggestions}
@@ -621,7 +611,6 @@ function OneOffRow({
   const [desc, setDesc] = useState(txn.description);
   const [amount, setAmount] = useState(String(amountPaise / 100));
   const [amountFocus, setAmountFocus] = useState(false);
-  const [dateEdit, setDateEdit] = useState(false);
 
   const fromChoices = active.filter((a) =>
     ["bank", "envelope", "cash", "investment", "credit_card", "receivable", "salary", "other_income"].includes(a.subtype)
@@ -637,17 +626,8 @@ function OneOffRow({
   return (
     <tr className="bg-pending-soft/40">
       <td>
-        {dateEdit ? (
-          <input type="date" value={txn.date} autoFocus
-            onChange={(e) => onPatch(txn, { date: e.target.value })}
-            onBlur={() => setDateEdit(false)}
-            className="amount" />
-        ) : (
-          <button onClick={() => setDateEdit(true)}
-            className="amount text-ink-faint px-2 py-1.5 w-full text-left whitespace-nowrap hover:text-ink">
-            {fmtDate(txn.date)}
-          </button>
-        )}
+        <DateInput value={txn.date} onChange={(iso) => onPatch(txn, { date: iso })}
+          className="text-ink-faint" />
       </td>
       <td>
         <input value={desc} onChange={(e) => setDesc(e.target.value)}
