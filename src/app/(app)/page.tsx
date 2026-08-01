@@ -191,6 +191,10 @@ export default function BookPage() {
     [card, ...active.filter((a) => a.parent_id === card.id)]
       .reduce((s, c) => s + -(cycles.get(c.id)?.spends_since_paise ?? 0), 0);
   const totalDue = parentCards.reduce((s, c) => s + cardDueNow(c), 0);
+  const totalCardOwed = parentCards.reduce(
+    (s, c) => s + cardDueNow(c) + cardUnbilled(c),
+    0
+  );
 
   // ---- actions
   async function postVirtual(t: RecurringTemplate, amountStr: string) {
@@ -309,6 +313,7 @@ export default function BookPage() {
           <Headline label="in" paise={plannedIn} cls="text-ledger" />
           <Headline label="committed" paise={committed} />
           <Headline label="card due" paise={totalDue} cls={totalDue > 0 ? "text-debit" : ""} />
+          <Headline label="card owed" paise={totalCardOwed} cls={totalCardOwed > 0 ? "text-debit" : ""} />
           <Headline label="coming back" paise={expectedBack} cls="text-ledger" />
           <Headline label="left" paise={plannedIn - committed + expectedBack} cls={plannedIn - committed + expectedBack >= 0 ? "text-ledger" : "text-debit"} />
           {avoidable > 0 && <Headline label="avoidable" paise={avoidable} cls="text-pending" />}
@@ -444,14 +449,17 @@ export default function BookPage() {
             {parentCards.map((c) => {
               const due = cardDueNow(c);
               const unbilled = cardUnbilled(c);
+              const owed = due + unbilled;
               return (
                 <div key={c.id} className="px-3 py-1.5">
                   <div className="flex items-baseline justify-between gap-2">
                     <p className="text-sm">{c.name}</p>
-                    <Amount paise={due} className={due > 0 ? "text-debit" : "text-ink-faint"} />
+                    <Amount paise={owed} className={owed > 0 ? "text-debit" : "text-ink-faint"} />
                   </div>
                   <p className="text-[11px] text-ink-faint">
-                    {due > 0 ? `bill due ${c.due_day}` : "bill clear"} · unbilled {formatPaise(unbilled)} (cuts {c.statement_day})
+                    {due > 0
+                      ? `${formatPaise(due)} due by ${c.due_day} · ${formatPaise(unbilled)} unbilled (cuts ${c.statement_day})`
+                      : `bill clear · ${formatPaise(unbilled)} unbilled, cuts ${c.statement_day} → due ${c.due_day}`}
                   </p>
                 </div>
               );
