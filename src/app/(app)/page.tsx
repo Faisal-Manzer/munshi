@@ -8,6 +8,7 @@ import { AccountSelect, NEW_CATEGORY } from "@/components/account-select";
 import { InputModal, Modal } from "@/components/modal";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { subtreeBalance, toISODate } from "@/lib/ledger";
+import { HandCoins, Plus, Scale } from "lucide-react";
 import {
   DEFAULT_TAGS,
   type Account,
@@ -486,7 +487,7 @@ export default function BookPage() {
               const gap = b.reported_balance_paise !== null ? b.reported_balance_paise - total : null;
               return (
                 <div key={b.id}>
-                  <div className="px-3 py-1.5 flex items-baseline justify-between gap-2 group">
+                  <div className="px-3 py-1.5 flex items-center justify-between gap-2">
                     <div>
                       <p className="text-sm">{b.name}</p>
                       {envs.length > 0 && (
@@ -498,16 +499,15 @@ export default function BookPage() {
                         </p>
                       )}
                     </div>
-                    <div className="text-right">
+                    <div className="flex items-center gap-1.5">
                       <Amount paise={total} />
-                      <button onClick={() => setReconFor(b)}
-                        className="block ml-auto text-[11px] text-ink-faint hover:text-ledger opacity-0 group-hover:opacity-100">
-                        reconcile
-                      </button>
+                      <IconBtn title={`Reconcile ${b.name}`} onClick={() => setReconFor(b)}>
+                        <Scale size={13} />
+                      </IconBtn>
                     </div>
                   </div>
                   {envs.map((env) => (
-                    <div key={env.id} className="pl-6 pr-3 py-1 flex items-baseline justify-between gap-2">
+                    <div key={env.id} className="pl-6 pr-9 py-1 flex items-baseline justify-between gap-2">
                       <p className="text-xs text-ink-soft">↳ {env.name}</p>
                       <Amount paise={balances.get(env.id)?.balance_paise ?? 0} className="text-xs" />
                     </div>
@@ -525,15 +525,20 @@ export default function BookPage() {
               const subs = active.filter((s) => s.parent_id === c.id);
               const gap = c.reported_balance_paise !== null ? -c.reported_balance_paise - owed : null;
               return (
-                <div key={c.id} className="px-3 py-1.5 group">
-                  <div className="flex items-baseline justify-between gap-2">
+                <div key={c.id} className="px-3 py-1.5">
+                  <div className="flex items-center justify-between gap-2">
                     <p className="text-sm">{c.name}</p>
-                    <Amount paise={owed} className={owed > 0 ? "text-debit" : "text-ink-faint"} />
+                    <div className="flex items-center gap-1.5">
+                      <Amount paise={owed} className={owed > 0 ? "text-debit" : "text-ink-faint"} />
+                      <IconBtn title={`Reconcile ${c.name}`} onClick={() => setReconFor(c)}>
+                        <Scale size={13} />
+                      </IconBtn>
+                    </div>
                   </div>
                   <p className="text-[11px] text-ink-faint">
-                    {due > 0 && <>due {formatPaise(due)} by the {c.due_day}th · </>}
+                    {due > 0 && <>due {formatPaise(due)} by the {ordinal(c.due_day)} · </>}
                     {unbilled > 0
-                      ? <>{formatPaise(unbilled)} unbilled — bills on the {c.statement_day}rd</>
+                      ? <>{formatPaise(unbilled)} unbilled — bills on the {ordinal(c.statement_day)}</>
                       : due > 0 ? null : "nothing owed"}
                   </p>
                   {subs.length > 0 && owed > 0 && (
@@ -546,18 +551,15 @@ export default function BookPage() {
                       {formatPaise(Math.abs(gap))} {gap > 0 ? "unlogged on card" : "over-logged"}
                     </p>
                   )}
-                  <button onClick={() => setReconFor(c)}
-                    className="text-[11px] text-ink-faint hover:text-ledger opacity-0 group-hover:opacity-100">
-                    reconcile
-                  </button>
                 </div>
               );
             })}
           </SideBlock>
 
           <SideBlock title="People"
-            action={<button onClick={() => setAddPersonOpen(true)}
-              className="text-[11px] text-ledger hover:underline">+ add</button>}>
+            action={<IconBtn title="Add person" onClick={() => setAddPersonOpen(true)}>
+              <Plus size={13} />
+            </IconBtn>}>
             {(() => {
               const rowsP = active
                 .filter((a) => a.subtype === "receivable")
@@ -567,24 +569,25 @@ export default function BookPage() {
                 return <p className="px-3 py-1.5 text-xs text-ink-faint">All settled.</p>;
               }
               return rowsP.map(({ p, bal }) => (
-                <div key={p.id} className="px-3 py-1.5 group">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <p className="text-sm">{p.name}</p>
-                    <Amount paise={Math.abs(bal)} className={bal > 0 ? "text-ledger" : "text-debit"} />
-                  </div>
-                  <div className="flex items-baseline justify-between gap-2">
-                    <p className="text-[11px] text-ink-faint">{bal > 0 ? "owes you" : "you owe"}</p>
-                    {bal > 0 && (
-                      <button
-                        onClick={() => openReceive({
-                          personId: p.id,
-                          amountPaise: bal,
-                          label: `Received from ${p.name}`,
-                        })}
-                        className="text-[11px] text-ink-faint hover:text-ledger opacity-0 group-hover:opacity-100">
-                        receive
-                      </button>
-                    )}
+                <div key={p.id} className="px-3 py-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm">{p.name}</p>
+                      <p className="text-[11px] text-ink-faint">{bal > 0 ? "owes you" : "you owe"}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Amount paise={Math.abs(bal)} className={bal > 0 ? "text-ledger" : "text-debit"} />
+                      {bal > 0 && (
+                        <IconBtn title={`Record money received from ${p.name}`}
+                          onClick={() => openReceive({
+                            personId: p.id,
+                            amountPaise: bal,
+                            label: `Received from ${p.name}`,
+                          })}>
+                          <HandCoins size={13} />
+                        </IconBtn>
+                      )}
+                    </div>
                   </div>
                 </div>
               ));
@@ -593,14 +596,13 @@ export default function BookPage() {
 
           <SideBlock title="Loans">
             {active.filter((a) => a.subtype === "loan").map((l) => (
-              <div key={l.id} className="px-3 py-1.5 flex items-baseline justify-between gap-2 group">
+              <div key={l.id} className="px-3 py-1.5 flex items-center justify-between gap-2">
                 <p className="text-sm">{l.name}</p>
-                <div className="text-right">
+                <div className="flex items-center gap-1.5">
                   <Amount paise={-(balances.get(l.id)?.balance_paise ?? 0)} />
-                  <button onClick={() => setReconFor(l)}
-                    className="block ml-auto text-[11px] text-ink-faint hover:text-ledger opacity-0 group-hover:opacity-100">
-                    reconcile
-                  </button>
+                  <IconBtn title={`Reconcile ${l.name}`} onClick={() => setReconFor(l)}>
+                    <Scale size={13} />
+                  </IconBtn>
                 </div>
               </div>
             ))}
@@ -688,6 +690,27 @@ function Headline({ label, paise, cls = "" }: { label: string; paise: number; cl
       <p className={`amount ${cls}`}>{formatPaise(paise)}</p>
     </div>
   );
+}
+
+function IconBtn({
+  title, onClick, children,
+}: {
+  title: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button onClick={onClick} title={title} aria-label={title}
+      className="text-ink-faint hover:text-ledger p-0.5 shrink-0">
+      {children}
+    </button>
+  );
+}
+
+function ordinal(n: number | null): string {
+  if (n === null) return "—";
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
 function SideBlock({
