@@ -603,7 +603,7 @@ function TxnEditRow({
         <td className="px-2 py-1.5 text-xs text-ink-faint">
           {t.postings?.length ?? "multiple"} accounts — see History
         </td>
-        <td className="px-2 py-1.5 text-right amount text-ink-faint">{formatPaise(row.amountPaise)}</td>
+        <td className="px-2 py-1.5 text-right amount text-ink-faint">—</td>
         <td className="px-2 py-1.5"></td>
         <td className="px-2 py-1.5 text-xs text-ink-faint">{t.notes ?? ""}</td>
         <td className="px-2 py-1.5 text-right">
