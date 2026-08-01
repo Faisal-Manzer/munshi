@@ -384,7 +384,7 @@ export default function BookPage() {
                 <th className="px-2 py-2 font-medium w-32">Date</th>
                 <th className="px-2 py-2 font-medium">Title</th>
                 <th className="px-2 py-2 font-medium w-56">Account</th>
-                <th className="px-2 py-2 font-medium w-28 text-right">Amount</th>
+                <th className="px-2 py-2 font-medium w-36 text-right">Amount</th>
                 <th className="px-2 py-2 font-medium w-28">Tag</th>
                 <th className="px-2 py-2 font-medium w-40">Note</th>
                 <th className="w-24"></th>
