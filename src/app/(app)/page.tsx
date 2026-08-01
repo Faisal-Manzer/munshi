@@ -166,8 +166,13 @@ export default function BookPage() {
     return from?.kind === "asset" && to?.kind === "asset" && to?.subtype !== "receivable";
   };
   const plannedIn = templates.filter(isIncomeT).reduce((s, t) => s + t.amount_paise, 0);
+  // cash committed: only templates that take money from bank/cash this month —
+  // card-charged items cost cash later, via the card bill (counted in card owed)
   const committed = templates
-    .filter((t) => !isIncomeT(t) && !isInternalT(t))
+    .filter((t) => {
+      if (isIncomeT(t) || isInternalT(t)) return false;
+      return accountById(accounts, t.from_account_id)?.subtype !== "credit_card";
+    })
     .reduce((s, t) => s + t.amount_paise, 0);
   const expectedBack = templates.reduce((s, t) => s + (t.reimburse_amount_paise ?? 0), 0);
   const avoidable = txns
@@ -312,11 +317,11 @@ export default function BookPage() {
         </div>
         <div className="flex gap-5 text-sm flex-wrap">
           <Headline label="in" paise={plannedIn} cls="text-ledger" />
-          <Headline label="committed" paise={committed} />
+          <Headline label="cash committed" paise={committed} />
           <Headline label="card due" paise={totalDue} cls={totalDue > 0 ? "text-debit" : ""} />
           <Headline label="card owed" paise={totalCardOwed} cls={totalCardOwed > 0 ? "text-debit" : ""} />
           <Headline label="coming back" paise={expectedBack} cls="text-ledger" />
-          <Headline label="left" paise={plannedIn - committed - totalDue + expectedBack} cls={plannedIn - committed - totalDue + expectedBack >= 0 ? "text-ledger" : "text-debit"} />
+          <Headline label="left" paise={plannedIn - committed - totalCardOwed + expectedBack} cls={plannedIn - committed - totalCardOwed + expectedBack >= 0 ? "text-ledger" : "text-debit"} />
           {avoidable > 0 && <Headline label="avoidable" paise={avoidable} cls="text-pending" />}
         </div>
       </div>

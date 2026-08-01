@@ -51,7 +51,12 @@ export default function PlanPage() {
   };
 
   const plannedIn = templates.filter(isIncome).reduce((s, t) => s + t.amount_paise, 0);
-  const committed = templates.filter((t) => !isIncome(t) && !isInternal(t)).reduce((s, t) => s + t.amount_paise, 0);
+  const committed = templates
+    .filter((t) => {
+      if (isIncome(t) || isInternal(t)) return false;
+      return accountById(accounts, t.from_account_id)?.subtype !== "credit_card";
+    })
+    .reduce((s, t) => s + t.amount_paise, 0);
   const expectedBack = templates.reduce((s, t) => s + (t.reimburse_amount_paise ?? 0), 0);
   const actualOut = templates
     .filter((t) => !isIncome(t) && !isInternal(t))
@@ -61,6 +66,14 @@ export default function PlanPage() {
   const headingToBill = (cardId: string) =>
     [cardId, ...active.filter((a) => a.parent_id === cardId).map((a) => a.id)]
       .reduce((s, id) => s + -(cycles.get(id)?.spends_since_paise ?? 0), 0);
+  const cardOwed = parentCards.reduce((s, c) => {
+    let owed = 0;
+    for (const id of [c.id, ...active.filter((a) => a.parent_id === c.id).map((a) => a.id)]) {
+      const cy = cycles.get(id);
+      if (cy) owed += -cy.billed_paise - cy.payments_since_paise - cy.spends_since_paise;
+    }
+    return s + Math.max(0, owed);
+  }, 0);
   const liquid = active
     .filter((a) => ["bank", "cash", "envelope"].includes(a.subtype))
     .reduce((s, a) => s + (balances.get(a.id)?.balance_paise ?? 0), 0);
@@ -88,11 +101,11 @@ export default function PlanPage() {
 
       <section className="grid sm:grid-cols-5 gap-2">
         <Stat label="Planned in" v={plannedIn} cls="text-ledger" />
-        <Stat label="Committed out" v={committed} />
-        <Stat label="Spent so far" v={actualOut} cls={actualOut > committed ? "text-debit" : ""} />
+        <Stat label="Cash committed" v={committed} />
+        <Stat label="Card owed" v={cardOwed} cls={cardOwed > 0 ? "text-debit" : ""} />
         <Stat label="Coming back" v={expectedBack} cls="text-ledger" />
-        <Stat label="Left" v={plannedIn - committed + expectedBack}
-          cls={plannedIn - committed + expectedBack >= 0 ? "text-ledger" : "text-debit"} />
+        <Stat label="Left" v={plannedIn - committed - cardOwed + expectedBack}
+          cls={plannedIn - committed - cardOwed + expectedBack >= 0 ? "text-ledger" : "text-debit"} />
       </section>
 
       <section>
