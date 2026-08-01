@@ -1167,7 +1167,10 @@ function QuickAddRow({
   const [tag, setTag] = useState("");
   const [note, setNote] = useState("");
   const [newCatOpen, setNewCatOpen] = useState(false);
+  const [planned, setPlanned] = useState<boolean | null>(null); // null = follow the date
   const suggestions = useTitleSuggestions(supabase);
+
+  const isPlanned = planned ?? date > toISODate(new Date());
 
   const fromChoices = accounts.filter((a) =>
     ["bank", "envelope", "cash", "investment", "credit_card", "receivable", "salary", "other_income"].includes(a.subtype)
@@ -1199,8 +1202,7 @@ function QuickAddRow({
       await createEntry(supabase, {
         date,
         description: desc.trim(),
-        // future-dated = planned, not happened yet — lands as pending, click "paid" when it does
-        status: date > toISODate(new Date()) ? "pending" : "done",
+        status: isPlanned ? "pending" : "done",
         fromAccountId: fromId,
         toAccountId: toId || spends?.id || "",
         amountPaise: paise,
@@ -1213,6 +1215,7 @@ function QuickAddRow({
       setAmount("");
       setTag("");
       setNote("");
+      setPlanned(null);
     } catch (e) {
       onError(e instanceof Error ? e.message : "failed");
     }
@@ -1260,10 +1263,18 @@ function QuickAddRow({
           placeholder="tag" className="text-xs" /></td>
         <td><input value={note} onChange={(e) => setNote(e.target.value)}
           placeholder="note" className="text-xs" /></td>
-        <td className="text-right">
-          <button onClick={submit} className="text-ledger text-xs font-medium px-2 py-1.5 hover:underline whitespace-nowrap"
-            title={date > toISODate(new Date()) ? "Future date — saved as planned (pending)" : "Saved as done"}>
-            {date > toISODate(new Date()) ? "Plan ↵" : "Add ↵"}
+        <td className="text-right whitespace-nowrap">
+          <button onClick={() => setPlanned(!isPlanned)}
+            title={isPlanned
+              ? "Will save as planned (pending) — click to save as done instead"
+              : "Will save as done — click to save as planned (pending) instead"}
+            className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 border mr-1 ${isPlanned
+              ? "border-pending text-pending bg-pending-soft/60"
+              : "border-rule text-ink-faint hover:text-pending"}`}>
+            {isPlanned ? "planned" : "done"}
+          </button>
+          <button onClick={submit} className="text-ledger text-xs font-medium px-2 py-1.5 hover:underline">
+            {isPlanned ? "Plan ↵" : "Add ↵"}
           </button>
         </td>
       </tr>
