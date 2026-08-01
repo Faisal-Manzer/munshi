@@ -213,6 +213,7 @@ function TemplateForm({
   const [installments, setInstallments] = useState(
     editing?.total_installments ? String(editing.total_installments) : ""
   );
+  const [isBudget, setIsBudget] = useState(editing?.is_budget ?? false);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -241,6 +242,7 @@ function TemplateForm({
       reimburse_amount_paise: personId ? parseRupees(personAmt) : null,
       reimburse_expected_day: personId && personDay ? Number(personDay) : null,
       total_installments: installments ? Number(installments) : null,
+      is_budget: isBudget,
     };
     const { error } = editing
       ? await supabase.from("recurring_templates").update(row).eq("id", editing.id)
@@ -289,6 +291,11 @@ function TemplateForm({
             placeholder="Expected repay day (1–31)" inputMode="numeric" />
         </>
       )}
+      <label className="flex items-center gap-2 text-sm text-ink-soft sm:col-span-2">
+        <input type="checkbox" checked={isBudget} onChange={(e) => setIsBudget(e.target.checked)} />
+        Spending budget — a transfer to another account that still counts as
+        committed spend (e.g. Home, personal allowance)
+      </label>
       {err && <p className="text-sm text-debit sm:col-span-2">{err}</p>}
       <button onClick={save} disabled={saving}
         className="bg-ledger text-paper-raised px-3 py-1.5 text-sm sm:col-span-2 disabled:opacity-60">

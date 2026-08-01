@@ -160,6 +160,7 @@ export default function BookPage() {
   const isIncomeT = (t: RecurringTemplate) =>
     accountById(accounts, t.from_account_id)?.kind === "income";
   const isInternalT = (t: RecurringTemplate) => {
+    if (t.is_budget) return false; // budget moves are committed spend
     const from = accountById(accounts, t.from_account_id);
     const to = accountById(accounts, t.to_account_id);
     return from?.kind === "asset" && to?.kind === "asset" && to?.subtype !== "receivable";
@@ -315,7 +316,7 @@ export default function BookPage() {
           <Headline label="card due" paise={totalDue} cls={totalDue > 0 ? "text-debit" : ""} />
           <Headline label="card owed" paise={totalCardOwed} cls={totalCardOwed > 0 ? "text-debit" : ""} />
           <Headline label="coming back" paise={expectedBack} cls="text-ledger" />
-          <Headline label="left" paise={plannedIn - committed + expectedBack} cls={plannedIn - committed + expectedBack >= 0 ? "text-ledger" : "text-debit"} />
+          <Headline label="left" paise={plannedIn - committed - totalDue + expectedBack} cls={plannedIn - committed - totalDue + expectedBack >= 0 ? "text-ledger" : "text-debit"} />
           {avoidable > 0 && <Headline label="avoidable" paise={avoidable} cls="text-pending" />}
         </div>
       </div>
@@ -344,7 +345,10 @@ export default function BookPage() {
                   const t = row.template;
                   const overdue = row.date < today;
                   const from = accountById(accounts, t.from_account_id);
+                  const toAcc = accountById(accounts, t.to_account_id);
                   const isIn = from?.kind === "income";
+                  const internal = !t.is_budget && from?.kind === "asset" &&
+                    toAcc?.kind === "asset" && toAcc?.subtype !== "receivable";
                   return (
                     <tr key={"v" + t.id} className={overdue ? "bg-debit-soft/40" : "bg-paper"}>
                       <td className={`${cellCls} amount text-ink-faint whitespace-nowrap`}>{fmtDate(row.date)}</td>
@@ -353,10 +357,11 @@ export default function BookPage() {
                         {overdue && <span className="text-xs text-debit font-medium"> · overdue</span>}
                       </td>
                       <td className={`${cellCls} text-xs text-ink-faint`}>
-                        {from?.name} → {accountById(accounts, t.to_account_id)?.name}
+                        {from?.name}{internal ? " ⇄ " : " → "}{toAcc?.name}
                       </td>
                       <td className={`${cellCls} text-right`}>
-                        <Amount paise={isIn ? t.amount_paise : -t.amount_paise} signed />
+                        <Amount paise={isIn ? t.amount_paise : internal ? t.amount_paise : -t.amount_paise}
+                          signed={!internal} className={internal ? "text-ink-faint" : ""} />
                       </td>
                       <td className={cellCls}></td>
                       <td className={cellCls}></td>
@@ -587,6 +592,7 @@ function TxnEditRow({
   const [desc, setDesc] = useState(t.description);
   const [amount, setAmount] = useState(String(row.amountPaise / 100));
   const [amountFocus, setAmountFocus] = useState(false);
+  const [dateEdit, setDateEdit] = useState(false);
 
   if (row.complex) {
     // multi-leg entry (e.g. opening balances) — read-only so it can't be mangled
@@ -621,9 +627,17 @@ function TxnEditRow({
   return (
     <tr className={pending ? "bg-pending-soft/40" : ""}>
       <td>
-        <input type="date" value={t.date}
-          onChange={(e) => onSave(row, { date: e.target.value })}
-          className="amount" />
+        {dateEdit ? (
+          <input type="date" value={t.date} autoFocus
+            onChange={(e) => onSave(row, { date: e.target.value })}
+            onBlur={() => setDateEdit(false)}
+            className="amount" />
+        ) : (
+          <button onClick={() => setDateEdit(true)}
+            className="amount text-ink-faint px-2 py-1.5 w-full text-left whitespace-nowrap hover:text-ink">
+            {fmtDate(t.date)}
+          </button>
+        )}
       </td>
       <td>
         <input value={desc} onChange={(e) => setDesc(e.target.value)}

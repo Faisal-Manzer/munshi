@@ -38,6 +38,7 @@ export default function PlanPage() {
   const isIncome = (t: RecurringTemplate) =>
     accountById(accounts, t.from_account_id)?.kind === "income";
   const isInternal = (t: RecurringTemplate) => {
+    if (t.is_budget) return false;
     const from = accountById(accounts, t.from_account_id);
     const to = accountById(accounts, t.to_account_id);
     return from?.kind === "asset" && to?.kind === "asset" && to?.subtype !== "receivable";

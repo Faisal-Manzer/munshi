@@ -86,6 +86,14 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   outline: 2px solid var(--ledger);
   outline-offset: -2px;
 }
+/* selects read as plain text until focused — keeps rows looking uniform */
+.ledger-grid select {
+  appearance: none;
+  -webkit-appearance: none;
+}
+.ledger-grid input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.35;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

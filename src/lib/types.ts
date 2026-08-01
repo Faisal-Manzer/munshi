@@ -80,6 +80,8 @@ export interface RecurringTemplate {
   reimburse_expected_day: number | null;
   total_installments: number | null;
   installments_done: number;
+  is_budget: boolean; // internal transfer that is really a spending budget
+
   start_date: string | null;
   end_date: string | null;
   active: boolean;
