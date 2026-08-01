@@ -5,6 +5,9 @@ recurring expenses, envelopes (money set aside inside a bank account), money
 lent to people, and shared loans — all as balanced double-entry bookkeeping,
 in INR.
 
+**Full feature reference: [docs/FEATURES.md](docs/FEATURES.md)** — every
+screen, formula, and data-model detail.
+
 ## Stack
 
 - Next.js (App Router) + Tailwind v4
@@ -66,5 +69,7 @@ is debited.
   repayment (who pays you back, how much, around which day).
 - **Reconcile**: on Accounts, "reconcile" stores the real balance from your
   bank/card app; the gap vs. your logged balance is shown, never auto-fixed.
-- **Overview**: pick a month — expected salary vs. committed outflows, card
-  bills in due-date order, a day-by-day cash-flow calendar, and who owes you.
+- **Two screens**: **Book** — the month's unified ledger (real entries,
+  projected recurring items, expected repayments) plus account/card/people
+  balances; **Plan** — next month onward: projected card dues, one-off plans,
+  the recurring registry, and projected liquid money.
