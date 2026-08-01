@@ -661,13 +661,10 @@ export default function BookPage() {
                   {owing.map(({ p, bal }) => (
                     <div key={p.id} className="px-3 py-1.5">
                       <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <button onClick={() => setPersonView(p)}
-                            className="text-sm text-left hover:text-ledger" title={`${p.name} — full ledger`}>
-                            {p.name}
-                          </button>
-                          <p className="text-[11px] text-ink-faint">{bal > 0 ? "owes you" : "you owe"}</p>
-                        </div>
+                        <button onClick={() => setPersonView(p)}
+                          className="text-sm text-left hover:text-ledger" title={`${p.name} — full ledger`}>
+                          {p.name}
+                        </button>
                         <div className="flex items-center gap-1.5">
                           <Amount paise={Math.abs(bal)} className={bal > 0 ? "text-ledger" : "text-debit"} />
                           {bal > 0 && (
@@ -682,6 +679,7 @@ export default function BookPage() {
                           )}
                         </div>
                       </div>
+                      <p className="text-[11px] text-ink-faint">{bal > 0 ? "owes you" : "you owe"}</p>
                     </div>
                   ))}
                   {settled.length > 0 && (
