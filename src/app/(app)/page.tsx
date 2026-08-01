@@ -38,6 +38,11 @@ interface ReceiveRow {
   amountPaise: number;
   received: boolean;
 }
+interface ReceiveTarget {
+  personId: string;
+  amountPaise: number;
+  label: string;
+}
 type Row = TxnRow | VirtualRow | ReceiveRow;
 
 function fmtDate(iso: string) {
@@ -54,9 +59,11 @@ export default function BookPage() {
   const [month, setMonth] = useState(() => toISODate(new Date()).slice(0, 7));
   const [error, setError] = useState<string | null>(null);
   const [postModal, setPostModal] = useState<RecurringTemplate | null>(null);
-  const [receiveModal, setReceiveModal] = useState<ReceiveRow | null>(null);
+  const [receiveModal, setReceiveModal] = useState<ReceiveTarget | null>(null);
   const [receiveAmt, setReceiveAmt] = useState("");
   const [receiveBank, setReceiveBank] = useState("");
+  const [reconFor, setReconFor] = useState<Account | null>(null);
+  const [addPersonOpen, setAddPersonOpen] = useState(false);
 
   const today = toISODate(new Date());
   const active = useMemo(() => accounts.filter((a) => !a.archived), [accounts]);
@@ -108,6 +115,9 @@ export default function BookPage() {
     const negs = t.postings.filter((p) => p.amount_paise < 0);
     const pos = t.postings.filter((p) => p.amount_paise > 0);
     const to = pos.find((p) => p.account_id !== t.reimburse_account_id) ?? pos[0];
+    const touchesEquity = t.postings.some(
+      (p) => accountById(accounts, p.account_id)?.kind === "equity"
+    );
     rows.push({
       kind: "txn",
       date: t.date,
@@ -117,7 +127,7 @@ export default function BookPage() {
       amountPaise: negs.length === 1
         ? -negs[0].amount_paise
         : pos.reduce((s, p) => s + p.amount_paise, 0),
-      complex: negs.length !== 1,
+      complex: negs.length !== 1 || touchesEquity,
     });
   }
   // credits made to each person this month (they paid you back)
@@ -228,21 +238,20 @@ export default function BookPage() {
     }
   }
 
-  function openReceive(r: ReceiveRow) {
-    setReceiveAmt(String(r.amountPaise / 100));
+  function openReceive(target: ReceiveTarget) {
+    setReceiveAmt(target.amountPaise > 0 ? String(target.amountPaise / 100) : "");
     setReceiveBank(banks[0]?.id ?? "");
-    setReceiveModal(r);
+    setReceiveModal(target);
   }
 
   async function recordReceive() {
     if (!receiveModal) return;
     const paise = parseRupees(receiveAmt);
     if (!paise || paise <= 0 || !receiveBank) return;
-    const person = accountById(accounts, receiveModal.personId);
     try {
       await createEntry(supabase, {
         date: today,
-        description: `${person?.name} repays ${receiveModal.template.name}`,
+        description: receiveModal.label,
         status: "done",
         fromAccountId: receiveModal.personId,
         toAccountId: receiveBank,
@@ -254,6 +263,29 @@ export default function BookPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "failed");
     }
+  }
+
+  async function reconcile(a: Account, input: string) {
+    const paise = parseRupees(input);
+    if (paise === null) return;
+    const signed = a.kind === "liability" ? -paise : paise;
+    await supabase
+      .from("accounts")
+      .update({ reported_balance_paise: signed, reported_at: new Date().toISOString() })
+      .eq("id", a.id);
+    await reload();
+  }
+
+  async function addPerson(name: string) {
+    if (!name.trim()) return;
+    const { error: e } = await supabase.from("accounts").insert({
+      name: name.trim(),
+      kind: "asset",
+      subtype: "receivable",
+      person_name: name.trim(),
+    });
+    if (e) setError(e.message);
+    else await reload();
   }
 
   async function patchTxn(id: string, patch: Partial<Transaction>) {
@@ -361,8 +393,12 @@ export default function BookPage() {
                         <span className={overdue ? "text-debit" : "text-ink-soft"}>{t.name}</span>
                         {overdue && <span className="text-xs text-debit font-medium"> · overdue</span>}
                       </td>
-                      <td className={`${cellCls} text-xs text-ink-faint`}>
-                        {from?.name}{internal ? " ⇄ " : " → "}{toAcc?.name}
+                      <td className="px-0 py-2 text-xs text-ink-faint">
+                        <div className="flex items-center">
+                          <span className="w-1/2 px-2">{from?.name}</span>
+                          <span>{internal ? "⇄" : "→"}</span>
+                          <span className="w-1/2 px-2">{toAcc?.name}</span>
+                        </div>
                       </td>
                       <td className={`${cellCls} text-right`}>
                         <Amount paise={isIn ? t.amount_paise : internal ? t.amount_paise : -t.amount_paise}
@@ -393,8 +429,12 @@ export default function BookPage() {
                         {row.received && <span className="text-xs text-ledger"> ✓ received</span>}
                         {overdue && <span className="text-xs text-debit font-medium"> · overdue</span>}
                       </td>
-                      <td className={`${cellCls} text-xs text-ink-faint`}>
-                        {person?.name} → you
+                      <td className="px-0 py-2 text-xs text-ink-faint">
+                        <div className="flex items-center">
+                          <span className="w-1/2 px-2">{person?.name}</span>
+                          <span>→</span>
+                          <span className="w-1/2 px-2">you</span>
+                        </div>
                       </td>
                       <td className={`${cellCls} text-right`}>
                         <Amount paise={row.amountPaise} signed className="text-ledger" />
@@ -403,7 +443,11 @@ export default function BookPage() {
                       <td className={cellCls}></td>
                       <td className={`${cellCls} text-right`}>
                         {!row.received && (
-                          <button onClick={() => openReceive(row)}
+                          <button onClick={() => openReceive({
+                            personId: row.personId,
+                            amountPaise: row.amountPaise,
+                            label: `${accountById(accounts, row.personId)?.name} repays ${row.template.name}`,
+                          })}
                             className={`text-xs border px-2 py-1 whitespace-nowrap ${overdue ? "border-debit text-debit hover:bg-debit-soft" : "border-ledger text-ledger hover:bg-ledger-soft"}`}>
                             receive
                           </button>
@@ -439,17 +483,35 @@ export default function BookPage() {
               const total = subtreeBalance(accounts, balances, b.id);
               const own = balances.get(b.id)?.balance_paise ?? 0;
               const envs = active.filter((e) => e.parent_id === b.id);
+              const gap = b.reported_balance_paise !== null ? b.reported_balance_paise - total : null;
               return (
-                <div key={b.id} className="px-3 py-1.5 flex items-baseline justify-between gap-2">
-                  <div>
-                    <p className="text-sm">{b.name}</p>
-                    {envs.length > 0 && (
-                      <p className="text-[11px] text-ink-faint">
-                        free {formatPaise(own)} · aside {formatPaise(total - own)}
-                      </p>
-                    )}
+                <div key={b.id}>
+                  <div className="px-3 py-1.5 flex items-baseline justify-between gap-2 group">
+                    <div>
+                      <p className="text-sm">{b.name}</p>
+                      {envs.length > 0 && (
+                        <p className="text-[11px] text-ink-faint">free {formatPaise(own)}</p>
+                      )}
+                      {gap !== null && gap !== 0 && (
+                        <p className="text-[11px] text-debit">
+                          {gap > 0 ? "+" : ""}{formatPaise(gap)} vs bank
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <Amount paise={total} />
+                      <button onClick={() => setReconFor(b)}
+                        className="block ml-auto text-[11px] text-ink-faint hover:text-ledger opacity-0 group-hover:opacity-100">
+                        reconcile
+                      </button>
+                    </div>
                   </div>
-                  <Amount paise={total} />
+                  {envs.map((env) => (
+                    <div key={env.id} className="pl-6 pr-3 py-1 flex items-baseline justify-between gap-2">
+                      <p className="text-xs text-ink-soft">↳ {env.name}</p>
+                      <Amount paise={balances.get(env.id)?.balance_paise ?? 0} className="text-xs" />
+                    </div>
+                  ))}
                 </div>
               );
             })}
@@ -460,37 +522,70 @@ export default function BookPage() {
               const due = cardDueNow(c);
               const unbilled = cardUnbilled(c);
               const owed = due + unbilled;
+              const subs = active.filter((s) => s.parent_id === c.id);
+              const gap = c.reported_balance_paise !== null ? -c.reported_balance_paise - owed : null;
               return (
-                <div key={c.id} className="px-3 py-1.5">
+                <div key={c.id} className="px-3 py-1.5 group">
                   <div className="flex items-baseline justify-between gap-2">
                     <p className="text-sm">{c.name}</p>
                     <Amount paise={owed} className={owed > 0 ? "text-debit" : "text-ink-faint"} />
                   </div>
                   <p className="text-[11px] text-ink-faint">
-                    {due > 0
-                      ? `${formatPaise(due)} due by ${c.due_day} · ${formatPaise(unbilled)} unbilled (cuts ${c.statement_day})`
-                      : `bill clear · ${formatPaise(unbilled)} unbilled, cuts ${c.statement_day} → due ${c.due_day}`}
+                    {due > 0 && <>due {formatPaise(due)} by the {c.due_day}th · </>}
+                    {unbilled > 0
+                      ? <>{formatPaise(unbilled)} unbilled — bills on the {c.statement_day}rd</>
+                      : due > 0 ? null : "nothing owed"}
                   </p>
+                  {subs.length > 0 && owed > 0 && (
+                    <p className="text-[11px] text-ink-faint">
+                      incl. {subs.map((s) => s.name).join(", ")}
+                    </p>
+                  )}
+                  {gap !== null && gap !== 0 && (
+                    <p className="text-[11px] text-debit">
+                      {formatPaise(Math.abs(gap))} {gap > 0 ? "unlogged on card" : "over-logged"}
+                    </p>
+                  )}
+                  <button onClick={() => setReconFor(c)}
+                    className="text-[11px] text-ink-faint hover:text-ledger opacity-0 group-hover:opacity-100">
+                    reconcile
+                  </button>
                 </div>
               );
             })}
           </SideBlock>
 
-          <SideBlock title="People">
+          <SideBlock title="People"
+            action={<button onClick={() => setAddPersonOpen(true)}
+              className="text-[11px] text-ledger hover:underline">+ add</button>}>
             {(() => {
-              const owing = active
+              const rowsP = active
                 .filter((a) => a.subtype === "receivable")
                 .map((p) => ({ p, bal: balances.get(p.id)?.balance_paise ?? 0 }))
                 .filter((x) => x.bal !== 0);
-              if (owing.length === 0) {
+              if (rowsP.length === 0) {
                 return <p className="px-3 py-1.5 text-xs text-ink-faint">All settled.</p>;
               }
-              return owing.map(({ p, bal }) => (
-                <div key={p.id} className="px-3 py-1.5 flex items-baseline justify-between gap-2">
-                  <p className="text-sm">{p.name}
-                    <span className="text-[11px] text-ink-faint"> {bal > 0 ? "owes you" : "you owe"}</span>
-                  </p>
-                  <Amount paise={Math.abs(bal)} className={bal > 0 ? "text-ledger" : "text-debit"} />
+              return rowsP.map(({ p, bal }) => (
+                <div key={p.id} className="px-3 py-1.5 group">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="text-sm">{p.name}</p>
+                    <Amount paise={Math.abs(bal)} className={bal > 0 ? "text-ledger" : "text-debit"} />
+                  </div>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="text-[11px] text-ink-faint">{bal > 0 ? "owes you" : "you owe"}</p>
+                    {bal > 0 && (
+                      <button
+                        onClick={() => openReceive({
+                          personId: p.id,
+                          amountPaise: bal,
+                          label: `Received from ${p.name}`,
+                        })}
+                        className="text-[11px] text-ink-faint hover:text-ledger opacity-0 group-hover:opacity-100">
+                        receive
+                      </button>
+                    )}
+                  </div>
                 </div>
               ));
             })()}
@@ -498,14 +593,44 @@ export default function BookPage() {
 
           <SideBlock title="Loans">
             {active.filter((a) => a.subtype === "loan").map((l) => (
-              <div key={l.id} className="px-3 py-1.5 flex items-baseline justify-between gap-2">
+              <div key={l.id} className="px-3 py-1.5 flex items-baseline justify-between gap-2 group">
                 <p className="text-sm">{l.name}</p>
-                <Amount paise={-(balances.get(l.id)?.balance_paise ?? 0)} />
+                <div className="text-right">
+                  <Amount paise={-(balances.get(l.id)?.balance_paise ?? 0)} />
+                  <button onClick={() => setReconFor(l)}
+                    className="block ml-auto text-[11px] text-ink-faint hover:text-ledger opacity-0 group-hover:opacity-100">
+                    reconcile
+                  </button>
+                </div>
               </div>
             ))}
           </SideBlock>
         </aside>
       </div>
+
+      <InputModal
+        open={reconFor !== null}
+        title={reconFor ? `Reconcile ${reconFor.name}` : ""}
+        label={reconFor?.kind === "liability"
+          ? "Actual outstanding from the card/bank app (₹)"
+          : "Actual balance from the bank app (₹)"}
+        placeholder="0"
+        submitLabel="Save"
+        onSubmit={async (v) => {
+          if (reconFor) await reconcile(reconFor, v);
+        }}
+        onClose={() => setReconFor(null)}
+      />
+
+      <InputModal
+        open={addPersonOpen}
+        title="New person"
+        label="Anyone who owes you or borrows through you"
+        placeholder="Name"
+        submitLabel="Add"
+        onSubmit={addPerson}
+        onClose={() => setAddPersonOpen(false)}
+      />
 
       <InputModal
         open={postModal !== null}
@@ -521,9 +646,7 @@ export default function BookPage() {
 
       <Modal
         open={receiveModal !== null}
-        title={receiveModal
-          ? `${accountById(accounts, receiveModal.personId)?.name} repays ${receiveModal.template.name}`
-          : ""}
+        title={receiveModal?.label ?? ""}
         onClose={() => setReceiveModal(null)}
       >
         <input
@@ -567,10 +690,19 @@ function Headline({ label, paise, cls = "" }: { label: string; paise: number; cl
   );
 }
 
-function SideBlock({ title, children }: { title: string; children: React.ReactNode }) {
+function SideBlock({
+  title, action, children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className="border border-rule bg-paper-raised">
-      <p className="text-[10px] uppercase tracking-[0.15em] text-ink-faint px-3 pt-2 pb-1">{title}</p>
+      <div className="flex items-baseline justify-between px-3 pt-2 pb-1">
+        <p className="text-[10px] uppercase tracking-[0.15em] text-ink-faint">{title}</p>
+        {action}
+      </div>
       <div className="divide-y divide-rule/60 pb-1">{children}</div>
     </div>
   );
@@ -606,9 +738,13 @@ function TxnEditRow({
         <td className="px-2 py-1.5 amount text-ink-faint whitespace-nowrap">{fmtDate(t.date)}</td>
         <td className="px-2 py-1.5 text-ink-soft">{t.description}</td>
         <td className="px-2 py-1.5 text-xs text-ink-faint">
-          {t.postings?.length ?? "multiple"} accounts — see History
+          {t.postings.length <= 3
+            ? "opening entry"
+            : `${t.postings.length} accounts — see History`}
         </td>
-        <td className="px-2 py-1.5 text-right amount text-ink-faint">—</td>
+        <td className="px-2 py-1.5 text-right amount text-ink-faint">
+          {t.postings.length <= 3 ? formatPaise(row.amountPaise) : "—"}
+        </td>
         <td className="px-2 py-1.5"></td>
         <td className="px-2 py-1.5 text-xs text-ink-faint">{t.notes ?? ""}</td>
         <td className="px-2 py-1.5 text-right">
@@ -708,6 +844,7 @@ function QuickAddRow({
   onError: (m: string | null) => void;
 }) {
   const [date, setDate] = useState(() => toISODate(new Date()));
+  const [dateEdit, setDateEdit] = useState(false);
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
   const [fromId, setFromId] = useState("");
@@ -767,7 +904,19 @@ function QuickAddRow({
   return (
     <>
       <tr className="bg-ledger-soft/50" onKeyDown={(e) => e.key === "Enter" && submit()}>
-        <td><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></td>
+        <td>
+          {dateEdit ? (
+            <input type="date" value={date} autoFocus
+              onChange={(e) => setDate(e.target.value)}
+              onBlur={() => setDateEdit(false)}
+              className="amount" />
+          ) : (
+            <button onClick={() => setDateEdit(true)}
+              className="amount px-2 py-1.5 w-full text-left whitespace-nowrap hover:text-ledger">
+              {fmtDate(date)}
+            </button>
+          )}
+        </td>
         <td><input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="New entry… (Enter saves)" /></td>
         <td>
           <div className="flex items-center">

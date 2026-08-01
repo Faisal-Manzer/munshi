@@ -1,23 +1,32 @@
 // Amounts stored as integer paise. Display in ₹ with Indian digit grouping.
 
-const inr = new Intl.NumberFormat("en-IN", {
+// whole rupees show no decimals; anything fractional always shows two (₹8,549.50, never ₹8,549.5)
+const inrWhole = new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",
   minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+const inrFrac = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
-
-const inrPlain = new Intl.NumberFormat("en-IN", {
-  minimumFractionDigits: 0,
+const plainWhole = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
+const plainFrac = new Intl.NumberFormat("en-IN", {
+  minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
 export function formatPaise(paise: number): string {
-  return inr.format(paise / 100);
+  const v = paise === 0 ? 0 : paise / 100; // avoid "-₹0"
+  return (Number.isInteger(v) ? inrWhole : inrFrac).format(v);
 }
 
 export function formatPaisePlain(paise: number): string {
-  return inrPlain.format(paise / 100);
+  const v = paise === 0 ? 0 : paise / 100;
+  return (Number.isInteger(v) ? plainWhole : plainFrac).format(v);
 }
 
 /** Parse a user-typed rupee amount ("17,099" / "17099.50") into paise. */
