@@ -483,7 +483,7 @@ export default function BookPage() {
         {/* sidebar */}
         <aside className="space-y-4">
           <SideBlock title="Accounts">
-            {active.filter((a) => ["bank", "cash", "investment"].includes(a.subtype)).map((b) => {
+            {active.filter((a) => ["bank", "cash"].includes(a.subtype)).map((b) => {
               const total = subtreeBalance(accounts, balances, b.id);
               const own = balances.get(b.id)?.balance_paise ?? 0;
               const envs = active.filter((e) => e.parent_id === b.id);
@@ -595,6 +595,20 @@ export default function BookPage() {
                 </div>
               ));
             })()}
+          </SideBlock>
+
+          <SideBlock title="Investments">
+            {active.filter((a) => a.subtype === "investment").map((v) => (
+              <div key={v.id} className="px-3 py-1.5 flex items-center justify-between gap-2">
+                <p className="text-sm">{v.name}</p>
+                <div className="flex items-center gap-1.5">
+                  <Amount paise={balances.get(v.id)?.balance_paise ?? 0} />
+                  <IconBtn title={`Reconcile ${v.name}`} onClick={() => setReconFor(v)}>
+                    <Scale size={13} />
+                  </IconBtn>
+                </div>
+              </div>
+            ))}
           </SideBlock>
 
           <SideBlock title="Loans">
