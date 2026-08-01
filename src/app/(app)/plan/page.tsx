@@ -320,13 +320,15 @@ export default function PlanPage() {
           One-offs — only in {monthName.split(" ")[0]}
         </h2>
         <div className="border border-rule bg-paper-raised overflow-x-auto">
-          <table className="ledger-grid w-full text-sm min-w-[640px]">
+          <table className="ledger-grid w-full text-sm min-w-[860px]">
             <thead>
               <tr className="text-left text-xs text-ink-faint">
                 <th className="px-2 py-2 font-medium w-32">Date</th>
                 <th className="px-2 py-2 font-medium">Title</th>
-                <th className="px-2 py-2 font-medium w-64">Account</th>
+                <th className="px-2 py-2 font-medium w-56">Account</th>
                 <th className="px-2 py-2 font-medium w-28 text-right">Amount</th>
+                <th className="px-2 py-2 font-medium w-28">Tag</th>
+                <th className="px-2 py-2 font-medium w-40">Note</th>
                 <th className="w-16"></th>
               </tr>
             </thead>
@@ -359,13 +361,16 @@ export default function PlanPage() {
           </button>
         </div>
         <div className="border border-rule bg-paper-raised overflow-x-auto">
-          <table className="ledger-grid w-full text-sm min-w-[560px]">
+          <table className="ledger-grid w-full text-sm min-w-[860px]">
             <thead>
               <tr className="text-left text-xs text-ink-faint">
-                <th className="px-3 py-2 font-medium w-10">Day</th>
-                <th className="px-2 py-2 font-medium">Item</th>
-                <th className="px-2 py-2 font-medium text-right w-28">Amount</th>
-                <th className="w-8"></th>
+                <th className="px-2 py-2 font-medium w-32">Date</th>
+                <th className="px-2 py-2 font-medium">Title</th>
+                <th className="px-2 py-2 font-medium w-56">Account</th>
+                <th className="px-2 py-2 font-medium w-28 text-right">Amount</th>
+                <th className="px-2 py-2 font-medium w-28">Tag</th>
+                <th className="px-2 py-2 font-medium w-40">Note</th>
+                <th className="w-16"></th>
               </tr>
             </thead>
             <tbody>
@@ -376,20 +381,29 @@ export default function PlanPage() {
                 const internal = isInternal(t);
                 return (
                   <tr key={t.id}>
-                    <td className="px-3 py-1.5 amount text-ink-faint text-right">{t.day_of_month}</td>
-                    <td className="px-2 py-1.5">
-                      {t.name}
-                      <span className="text-xs text-ink-faint"> · {from?.name}{internal ? " ⇄ " : " → "}{to?.name}</span>
-                      {t.reimburse_account_id && t.reimburse_amount_paise ? (
-                        <span className="text-[11px] text-ledger"> · {accountById(accounts, t.reimburse_account_id)?.name} returns {formatPaise(t.reimburse_amount_paise)}</span>
-                      ) : null}
-                      {t.total_installments ? (
-                        <span className="text-[11px] text-ink-faint"> · installment {Math.min((doneCounts.get(t.id) ?? 0) + 1, t.total_installments)}/{t.total_installments}</span>
-                      ) : null}
+                    <td className="px-2 py-1.5 amount text-ink-faint whitespace-nowrap">
+                      every {ordinal(t.day_of_month)}
+                    </td>
+                    <td className="px-2 py-1.5">{t.name}</td>
+                    <td className="px-0 py-2 text-xs text-ink-faint">
+                      <div className="flex items-center">
+                        <span className="w-1/2 px-2">{from?.name}</span>
+                        <span>{internal ? "⇄" : "→"}</span>
+                        <span className="w-1/2 px-2">{to?.name}</span>
+                      </div>
                     </td>
                     <td className="px-2 py-1.5 text-right">
                       <Amount paise={income ? t.amount_paise : -t.amount_paise} signed={!internal}
                         className={internal ? "text-ink-faint" : ""} />
+                    </td>
+                    <td className="px-2 py-1.5"></td>
+                    <td className="px-2 py-1.5 text-[11px]">
+                      {t.reimburse_account_id && t.reimburse_amount_paise ? (
+                        <span className="text-ledger">{accountById(accounts, t.reimburse_account_id)?.name} returns {formatPaise(t.reimburse_amount_paise)}</span>
+                      ) : null}
+                      {t.total_installments ? (
+                        <span className="text-ink-faint">{t.reimburse_account_id && t.reimburse_amount_paise ? " · " : ""}installment {Math.min((doneCounts.get(t.id) ?? 0) + 1, t.total_installments)}/{t.total_installments}</span>
+                      ) : null}
                     </td>
                     <td className="px-2 py-1.5 text-right">
                       <button onClick={() => { setEditing(t); setFormOpen(true); }}
@@ -445,6 +459,11 @@ export default function PlanPage() {
   );
 }
 
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 function Stat({ label, v, cls = "" }: { label: string; v: number; cls?: string }) {
   return (
     <div className="border border-rule bg-paper-raised px-4 py-3">
@@ -483,6 +502,8 @@ function OneOffAddRow({
   const [amount, setAmount] = useState("");
   const [fromId, setFromId] = useState("");
   const [toId, setToId] = useState("");
+  const [tag, setTag] = useState("");
+  const [note, setNote] = useState("");
 
   useEffect(() => setDate(`${month}-01`), [month]);
 
@@ -503,10 +524,14 @@ function OneOffAddRow({
       fromAccountId: fromId,
       toAccountId: toId,
       amountPaise: paise,
+      tag: tag.trim() || null,
+      notes: note.trim() || null,
     });
     if (ok) {
       setDesc("");
       setAmount("");
+      setTag("");
+      setNote("");
     }
   }
 
@@ -538,6 +563,10 @@ function OneOffAddRow({
       </td>
       <td><input value={amount} onChange={(e) => setAmount(e.target.value)}
         placeholder="₹" inputMode="decimal" className="text-right amount" /></td>
+      <td><input value={tag} onChange={(e) => setTag(e.target.value)}
+        placeholder="tag" className="text-xs" /></td>
+      <td><input value={note} onChange={(e) => setNote(e.target.value)}
+        placeholder="note" className="text-xs" /></td>
       <td className="text-right">
         <button onClick={submit} className="text-ledger text-xs font-medium px-2 py-1.5 hover:underline">
           Add ↵
@@ -623,6 +652,22 @@ function OneOffRow({
             if (p && p > 0 && p !== amountPaise) onPatch(txn, { amountPaise: p });
           }}
           className={`text-right amount ${isIn ? "text-ledger" : isInternal ? "text-ink-faint" : "text-debit"}`} />
+      </td>
+      <td>
+        <input defaultValue={txn.tag ?? ""} placeholder="—"
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v !== (txn.tag ?? "")) onPatch(txn, { tag: v || null });
+          }}
+          className={`text-xs ${txn.tag ? "text-pending" : "text-ink-faint"}`} />
+      </td>
+      <td>
+        <input defaultValue={txn.notes ?? ""} placeholder="—"
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v !== (txn.notes ?? "")) onPatch(txn, { notes: v || null });
+          }}
+          className="text-xs text-ink-soft" />
       </td>
       <td className="px-2 py-1.5 text-right">
         <button onClick={onDelete} className="text-ink-faint hover:text-debit">×</button>
