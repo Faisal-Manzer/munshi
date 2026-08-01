@@ -19,10 +19,11 @@ import {
 interface TxnRow {
   kind: "txn";
   date: string;
-  txn: Transaction;
+  txn: Transaction & { postings: Posting[] };
   fromId: string | null;
   toId: string | null;
   amountPaise: number;
+  complex: boolean; // more than one credited account — render read-only
 }
 interface VirtualRow {
   kind: "virtual";
@@ -104,16 +105,19 @@ export default function BookPage() {
   const daysInMonth = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
   const rows: Row[] = [];
   for (const t of txns) {
-    const neg = t.postings.find((p) => p.amount_paise < 0);
+    const negs = t.postings.filter((p) => p.amount_paise < 0);
     const pos = t.postings.filter((p) => p.amount_paise > 0);
     const to = pos.find((p) => p.account_id !== t.reimburse_account_id) ?? pos[0];
     rows.push({
       kind: "txn",
       date: t.date,
       txn: t,
-      fromId: neg?.account_id ?? null,
+      fromId: negs[0]?.account_id ?? null,
       toId: to?.account_id ?? null,
-      amountPaise: neg ? -neg.amount_paise : pos.reduce((s, p) => s + p.amount_paise, 0),
+      amountPaise: negs.length === 1
+        ? -negs[0].amount_paise
+        : pos.reduce((s, p) => s + p.amount_paise, 0),
+      complex: negs.length !== 1,
     });
   }
   // credits made to each person this month (they paid you back)
@@ -375,7 +379,7 @@ export default function BookPage() {
                         {overdue && <span className="text-xs text-debit font-medium"> · overdue</span>}
                       </td>
                       <td className={`${cellCls} text-xs text-ink-faint`}>
-                        {person?.name} → bank
+                        {person?.name} → you
                       </td>
                       <td className={`${cellCls} text-right`}>
                         <Amount paise={row.amountPaise} signed className="text-ledger" />
@@ -455,17 +459,23 @@ export default function BookPage() {
           </SideBlock>
 
           <SideBlock title="People">
-            {active.filter((a) => a.subtype === "receivable").map((p) => {
-              const bal = balances.get(p.id)?.balance_paise ?? 0;
-              return (
+            {(() => {
+              const owing = active
+                .filter((a) => a.subtype === "receivable")
+                .map((p) => ({ p, bal: balances.get(p.id)?.balance_paise ?? 0 }))
+                .filter((x) => x.bal !== 0);
+              if (owing.length === 0) {
+                return <p className="px-3 py-1.5 text-xs text-ink-faint">All settled.</p>;
+              }
+              return owing.map(({ p, bal }) => (
                 <div key={p.id} className="px-3 py-1.5 flex items-baseline justify-between gap-2">
                   <p className="text-sm">{p.name}
-                    <span className="text-[11px] text-ink-faint"> {bal > 0 ? "owes you" : bal < 0 ? "you owe" : ""}</span>
+                    <span className="text-[11px] text-ink-faint"> {bal > 0 ? "owes you" : "you owe"}</span>
                   </p>
-                  <Amount paise={Math.abs(bal)} className={bal > 0 ? "text-ledger" : bal < 0 ? "text-debit" : "text-ink-faint"} />
+                  <Amount paise={Math.abs(bal)} className={bal > 0 ? "text-ledger" : "text-debit"} />
                 </div>
-              );
-            })}
+              ));
+            })()}
           </SideBlock>
 
           <SideBlock title="Loans">
@@ -568,6 +578,30 @@ function TxnEditRow({
 
   const [desc, setDesc] = useState(t.description);
   const [amount, setAmount] = useState(String(row.amountPaise / 100));
+  const [amountFocus, setAmountFocus] = useState(false);
+
+  if (row.complex) {
+    // multi-leg entry (e.g. opening balances) — read-only so it can't be mangled
+    return (
+      <tr className="bg-paper">
+        <td className="px-2 py-1.5 amount text-ink-faint whitespace-nowrap">{fmtDate(t.date)}</td>
+        <td className="px-2 py-1.5 text-ink-soft">{t.description}</td>
+        <td className="px-2 py-1.5 text-xs text-ink-faint">
+          {t.postings?.length ?? "multiple"} accounts — see History
+        </td>
+        <td className="px-2 py-1.5 text-right amount text-ink-faint">{formatPaise(row.amountPaise)}</td>
+        <td className="px-2 py-1.5"></td>
+        <td className="px-2 py-1.5 text-xs text-ink-faint">{t.notes ?? ""}</td>
+        <td className="px-2 py-1.5 text-right">
+          <button onClick={onDelete} className="text-ink-faint hover:text-debit">×</button>
+        </td>
+      </tr>
+    );
+  }
+
+  const amountDisplay = amountFocus
+    ? amount
+    : `${isInternal ? "" : isIn ? "+" : "−"}${formatPaise(row.amountPaise)}`;
 
   const fromChoices = active.filter((a) =>
     ["bank", "envelope", "cash", "investment", "credit_card", "receivable", "salary", "other_income"].includes(a.subtype)
@@ -597,9 +631,14 @@ function TxnEditRow({
         </div>
       </td>
       <td>
-        <input value={amount} inputMode="decimal"
+        <input value={amountDisplay} inputMode="decimal"
+          onFocus={() => {
+            setAmount(String(row.amountPaise / 100));
+            setAmountFocus(true);
+          }}
           onChange={(e) => setAmount(e.target.value)}
           onBlur={() => {
+            setAmountFocus(false);
             const p = parseRupees(amount);
             if (p && p > 0 && p !== row.amountPaise) onSave(row, { amountPaise: p });
           }}
