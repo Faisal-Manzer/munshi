@@ -130,11 +130,16 @@ export default function PlanPage() {
   const oneOffsFor = (m: string) => allOneOffs.filter((x) => x.date.slice(0, 7) === m);
 
   function cardPlansFor(m: string): CardPlan[] {
+    // months between now and the plan month — the due-landing statement is
+    // within ±2 of that, however far out the plan month is
+    const ahead =
+      Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)) - 1
+      - (today.getFullYear() * 12 + today.getMonth());
     return parentCards.flatMap((card) => {
       const s = card.statement_day, dd = card.due_day;
       if (!s || !dd) return [];
       // find the statement whose DUE lands in the plan month
-      for (let k = 0; k < 18; k++) {
+      for (let k = Math.max(0, ahead - 2); k <= ahead + 2; k++) {
         const st = clampDate(today.getFullYear(), today.getMonth() + k, s);
         const due = dd > s
           ? clampDate(st.getFullYear(), st.getMonth(), dd)
@@ -151,7 +156,7 @@ export default function PlanPage() {
         const recurring = templates
           .filter((t) => ids.includes(t.from_account_id))
           .reduce((sum, t) => {
-            for (let j = 0; j < 18; j++) {
+            for (let j = 0; j <= k + 1; j++) {
               const occ = clampDate(today.getFullYear(), today.getMonth() + j, t.day_of_month);
               if (occ > today && occ > windowStart && occ <= st) {
                 // an EMI only charges the card while its window covers the occurrence
