@@ -199,7 +199,15 @@ export default function BookPage() {
       });
     }
   }
-  rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  // opening/equity entries pinned on top as one block, then the month by date
+  const isOpening = (r: Row) =>
+    r.kind === "txn" &&
+    r.txn.postings.some((p) => accountById(accounts, p.account_id)?.kind === "equity");
+  rows.sort((a, b) => {
+    const ao = isOpening(a) ? 0 : 1, bo = isOpening(b) ? 0 : 1;
+    if (ao !== bo) return ao - bo;
+    return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+  });
 
   // ---- summary
   const isIncomeT = (t: RecurringTemplate) =>
