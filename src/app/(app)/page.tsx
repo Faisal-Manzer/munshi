@@ -5,6 +5,7 @@ import { useLedger, accountById } from "@/lib/use-ledger";
 import { createEntry, rewriteEntry, type EntryInput } from "@/lib/postings";
 import { Amount } from "@/components/amount";
 import { AccountSelect, NEW_CATEGORY } from "@/components/account-select";
+import { Select } from "@/components/select";
 import { InputModal, Modal } from "@/components/modal";
 import { AccountModal, BLOCK_OPTIONS } from "@/components/account-modal";
 import { CategoriesModal } from "@/components/categories-modal";
@@ -767,15 +768,10 @@ export default function BookPage() {
           className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised amount"
           autoFocus
         />
-        <select
-          value={receiveBank}
-          onChange={(e) => setReceiveBank(e.target.value)}
-          className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised mt-2"
-        >
-          {banks.map((b) => (
-            <option key={b.id} value={b.id}>into {b.name}</option>
-          ))}
-        </select>
+        <div className="mt-2">
+          <Select chrome value={receiveBank} onChange={setReceiveBank} placeholder="into…"
+            groups={[{ options: banks.map((b) => ({ value: b.id, label: `into ${b.name}` })) }]} />
+        </div>
         <div className="flex justify-end gap-2 mt-4">
           <button onClick={() => setReceiveModal(null)} className="text-sm text-ink-soft px-3 py-1.5 hover:text-ink">
             Cancel
@@ -867,11 +863,9 @@ function SplitModal({
       <p className="text-xs text-ink-soft mb-2">
         Their share is added to what they owe you; your expense shrinks by the same amount.
       </p>
-      <select value={personId} onChange={(e) => setPersonId(e.target.value)}
-        className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised">
-        <option value="">No split</option>
-        {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-      </select>
+      <Select chrome value={personId} onChange={setPersonId} placeholder="No split"
+        groups={[{ options: [{ value: "", label: "No split" },
+          ...people.map((p) => ({ value: p.id, label: p.name }))] }]} />
       {personId && (
         <input value={amt} onChange={(e) => setAmt(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && onSave(personId, paise)}

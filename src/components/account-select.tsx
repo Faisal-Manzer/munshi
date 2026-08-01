@@ -1,5 +1,6 @@
 "use client";
 
+import { Select, type SelectGroup } from "@/components/select";
 import type { Account, AccountSubtype } from "@/lib/types";
 
 const GROUPS: { label: string; subtypes: AccountSubtype[] }[] = [
@@ -16,8 +17,17 @@ const GROUPS: { label: string; subtypes: AccountSubtype[] }[] = [
 
 export const NEW_CATEGORY = "__new_category__";
 
+export function accountGroups(choices: Account[]): SelectGroup[] {
+  return GROUPS.map((g) => ({
+    label: g.label,
+    options: choices
+      .filter((a) => g.subtypes.includes(a.subtype))
+      .map((a) => ({ value: a.id, label: a.name, hint: a.parent_id ? "· " : undefined })),
+  })).filter((g) => g.options.length > 0);
+}
+
 export function AccountSelect({
-  value, onChange, choices, placeholder = "—", allowCreate = false, className = "",
+  value, onChange, choices, placeholder = "—", allowCreate = false, className = "", chrome = false,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -25,28 +35,14 @@ export function AccountSelect({
   placeholder?: string;
   allowCreate?: boolean;
   className?: string;
+  chrome?: boolean;
 }) {
+  const groups = accountGroups(choices);
+  if (allowCreate) {
+    groups.push({ options: [{ value: NEW_CATEGORY, label: "＋ New category…" }] });
+  }
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className={className}>
-      <option value="">{placeholder}</option>
-      {GROUPS.map((g) => {
-        const items = choices.filter((a) => g.subtypes.includes(a.subtype));
-        if (items.length === 0) return null;
-        return (
-          <optgroup key={g.label} label={g.label}>
-            {items.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.parent_id ? "· " : ""}{a.name}
-              </option>
-            ))}
-          </optgroup>
-        );
-      })}
-      {allowCreate && (
-        <optgroup label="─────">
-          <option value={NEW_CATEGORY}>＋ New category…</option>
-        </optgroup>
-      )}
-    </select>
+    <Select value={value} onChange={onChange} groups={groups}
+      placeholder={placeholder} className={className} chrome={chrome} />
   );
 }

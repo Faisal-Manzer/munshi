@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useLedger } from "@/lib/use-ledger";
 import { Modal } from "@/components/modal";
+import { Select } from "@/components/select";
 import { parseRupees } from "@/lib/money";
 import { toISODate } from "@/lib/ledger";
 import type { Account, AccountKind, AccountSubtype } from "@/lib/types";
@@ -179,9 +180,8 @@ export function AccountModal({
     <Modal open={open} title={editing ? `Edit ${editing.name}` : "New account"} onClose={onClose}>
       <div className="space-y-3">
         {!editing && options.length > 1 && (
-          <select className={input} value={optIdx} onChange={(e) => setOptIdx(Number(e.target.value))}>
-            {options.map((o, i) => <option key={o.label} value={i}>{o.label}</option>)}
-          </select>
+          <Select chrome value={String(optIdx)} onChange={(v) => setOptIdx(Number(v))}
+            groups={[{ options: options.map((o, i) => ({ value: String(i), label: o.label })) }]} />
         )}
         {!editing && options.length === 1 && (
           <p className="text-xs text-ink-faint">{options[0].label}</p>
@@ -190,10 +190,9 @@ export function AccountModal({
           placeholder="Name" autoFocus
           onKeyDown={(e) => e.key === "Enter" && save()} />
         {!editing && opt?.needsParent && (
-          <select className={input} value={parentId} onChange={(e) => setParentId(e.target.value)}>
-            <option value="">Parent {opt.needsParent === "bank" ? "bank" : "card"}…</option>
-            {parentChoices.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          <Select chrome value={parentId} onChange={setParentId}
+            placeholder={`Parent ${opt.needsParent === "bank" ? "bank" : "card"}…`}
+            groups={[{ options: parentChoices.map((p) => ({ value: p.id, label: p.name })) }]} />
         )}
         {isCard && (
           <>

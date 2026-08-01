@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useLedger } from "@/lib/use-ledger";
 import { Modal } from "@/components/modal";
+import { Select } from "@/components/select";
+import { accountGroups } from "@/components/account-select";
 import { parseRupees } from "@/lib/money";
 import {
   RECURRING_KIND_LABEL,
@@ -118,29 +120,21 @@ function TemplateForm({
     <div className="grid gap-3 sm:grid-cols-2">
       <input className={input} value={name} onChange={(e) => setName(e.target.value)}
         placeholder="Name (e.g. Business EMI, Rent)" />
-      <select className={input} value={kind} onChange={(e) => setKind(e.target.value as RecurringKind)}>
-        {Object.entries(RECURRING_KIND_LABEL).map(([k, label]) => (
-          <option key={k} value={k}>{label}</option>
-        ))}
-      </select>
+      <Select chrome value={kind} onChange={(v) => setKind(v as RecurringKind)}
+        groups={[{ options: Object.entries(RECURRING_KIND_LABEL).map(([k, label]) => ({ value: k, label })) }]} />
       <input className={input} value={day} onChange={(e) => setDay(e.target.value)}
         placeholder="Day of month (1–31)" inputMode="numeric" />
       <input className={input} value={amount} onChange={(e) => setAmount(e.target.value)}
         placeholder="Amount ₹" inputMode="decimal" />
-      <select className={input} value={fromId} onChange={(e) => setFromId(e.target.value)}>
-        <option value="">Paid from…</option>
-        {fromChoices.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-      </select>
-      <select className={input} value={toId} onChange={(e) => setToId(e.target.value)}>
-        <option value="">Pays for… (expense / loan)</option>
-        {toChoices.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-      </select>
+      <Select chrome value={fromId} onChange={setFromId} placeholder="Paid from…"
+        groups={accountGroups(fromChoices)} />
+      <Select chrome value={toId} onChange={setToId} placeholder="Pays for… (expense / loan)"
+        groups={accountGroups(toChoices)} />
       <input className={input} value={installments} onChange={(e) => setInstallments(e.target.value)}
         placeholder="Total installments (EMIs, optional)" inputMode="numeric" />
-      <select className={input} value={personId} onChange={(e) => setPersonId(e.target.value)}>
-        <option value="">Someone repays part? (optional)</option>
-        {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-      </select>
+      <Select chrome value={personId} onChange={setPersonId} placeholder="Someone repays part? (optional)"
+        groups={[{ options: [{ value: "", label: "No one repays" },
+          ...people.map((p) => ({ value: p.id, label: p.name }))] }]} />
       {personId && (
         <>
           <input className={input} value={personAmt} onChange={(e) => setPersonAmt(e.target.value)}
