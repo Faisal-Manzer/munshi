@@ -43,6 +43,4 @@ create policy "own or shared recurring" on recurring_templates for all
   using (user_id = auth.uid() or is_shared_row(user_id))
   with check (user_id = auth.uid() or is_shared_row(user_id));
 
--- seed: your emails (add more with: insert into ledger_members values ('email');)
-insert into ledger_members (email) values ('you@example.com')
-on conflict do nothing;
+-- seed your emails: insert into ledger_members (email) values ('you@example.com');
