@@ -20,6 +20,7 @@ export default function RecurringPage() {
   const [monthTxns, setMonthTxns] = useState<Transaction[]>([]);
   const [doneCounts, setDoneCounts] = useState<Map<string, number>>(new Map());
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<RecurringTemplate | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const month = toISODate(new Date()).slice(0, 7);
@@ -108,12 +109,15 @@ export default function RecurringPage() {
 
       {error && <p className="text-sm text-debit">{error}</p>}
 
-      {showForm && (
+      {(showForm || editing) && (
         <TemplateForm
+          key={editing?.id ?? "new"}
           accounts={active}
           people={people}
+          editing={editing}
           onSaved={() => {
             setShowForm(false);
+            setEditing(null);
             load();
           }}
         />
@@ -164,6 +168,9 @@ export default function RecurringPage() {
               ) : (
                 <span className="text-xs text-ledger border border-ledger px-2 py-1">paid ✓</span>
               )}
+              <button onClick={() => setEditing(t)} className="text-xs text-ink-faint hover:text-ledger">
+                edit
+              </button>
               <button onClick={() => deactivate(t)} className="text-xs text-ink-faint hover:text-debit">
                 stop
               </button>
@@ -182,23 +189,30 @@ export default function RecurringPage() {
 }
 
 function TemplateForm({
-  accounts, people, onSaved,
+  accounts, people, editing, onSaved,
 }: {
   accounts: Account[];
   people: Account[];
+  editing?: RecurringTemplate | null;
   onSaved: () => void;
 }) {
   const { supabase } = useLedger();
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState<RecurringKind>("autodebit_bank");
-  const [day, setDay] = useState("5");
-  const [amount, setAmount] = useState("");
-  const [fromId, setFromId] = useState("");
-  const [toId, setToId] = useState("");
-  const [personId, setPersonId] = useState("");
-  const [personAmt, setPersonAmt] = useState("");
-  const [personDay, setPersonDay] = useState("");
-  const [installments, setInstallments] = useState("");
+  const [name, setName] = useState(editing?.name ?? "");
+  const [kind, setKind] = useState<RecurringKind>(editing?.kind ?? "autodebit_bank");
+  const [day, setDay] = useState(editing ? String(editing.day_of_month) : "5");
+  const [amount, setAmount] = useState(editing ? String(editing.amount_paise / 100) : "");
+  const [fromId, setFromId] = useState(editing?.from_account_id ?? "");
+  const [toId, setToId] = useState(editing?.to_account_id ?? "");
+  const [personId, setPersonId] = useState(editing?.reimburse_account_id ?? "");
+  const [personAmt, setPersonAmt] = useState(
+    editing?.reimburse_amount_paise ? String(editing.reimburse_amount_paise / 100) : ""
+  );
+  const [personDay, setPersonDay] = useState(
+    editing?.reimburse_expected_day ? String(editing.reimburse_expected_day) : ""
+  );
+  const [installments, setInstallments] = useState(
+    editing?.total_installments ? String(editing.total_installments) : ""
+  );
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -216,7 +230,7 @@ function TemplateForm({
       return;
     }
     setSaving(true);
-    const { error } = await supabase.from("recurring_templates").insert({
+    const row = {
       name: name.trim(),
       kind,
       day_of_month: Number(day),
@@ -227,7 +241,10 @@ function TemplateForm({
       reimburse_amount_paise: personId ? parseRupees(personAmt) : null,
       reimburse_expected_day: personId && personDay ? Number(personDay) : null,
       total_installments: installments ? Number(installments) : null,
-    });
+    };
+    const { error } = editing
+      ? await supabase.from("recurring_templates").update(row).eq("id", editing.id)
+      : await supabase.from("recurring_templates").insert(row);
     setSaving(false);
     if (error) {
       setErr(error.message);
@@ -275,7 +292,7 @@ function TemplateForm({
       {err && <p className="text-sm text-debit sm:col-span-2">{err}</p>}
       <button onClick={save} disabled={saving}
         className="bg-ledger text-paper-raised px-3 py-1.5 text-sm sm:col-span-2 disabled:opacity-60">
-        {saving ? "Saving…" : "Save recurring item"}
+        {saving ? "Saving…" : editing ? `Update “${editing.name}”` : "Save recurring item"}
       </button>
     </div>
   );

@@ -16,7 +16,7 @@ export default async function AppLayout({
   return (
     <div className="flex-1 flex flex-col">
       <Nav email={user.email ?? ""} />
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6">
+      <main className="flex-1 w-full max-w-[1800px] mx-auto px-4 sm:px-8 py-6">
         {children}
       </main>
     </div>

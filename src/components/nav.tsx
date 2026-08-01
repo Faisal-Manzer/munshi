@@ -25,7 +25,7 @@ export function Nav({ email }: { email: string }) {
 
   return (
     <header className="border-b border-rule-strong bg-paper-raised">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 flex items-center gap-6 h-14">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-8 flex items-center gap-6 h-14">
         <Link href="/" className="font-display text-xl leading-none" style={{ fontFamily: "var(--font-instrument-serif)" }}>
           Munshi
         </Link>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useLedger } from "@/lib/use-ledger";
 import { Amount } from "@/components/amount";
+import { InputModal } from "@/components/modal";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { displayBalance, subtreeBalance } from "@/lib/ledger";
 import type { Account, AccountKind, AccountSubtype } from "@/lib/types";
@@ -37,6 +38,7 @@ export default function AccountsPage() {
   const [opening, setOpening] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [reconFor, setReconFor] = useState<Account | null>(null);
 
   const opt = NEW_OPTIONS[optIdx];
   const active = accounts.filter((a) => !a.archived);
@@ -117,11 +119,7 @@ export default function AccountsPage() {
     reload();
   }
 
-  async function reportBalance(a: Account) {
-    const input = prompt(
-      `Actual current ${a.kind === "liability" ? "outstanding" : "balance"} for ${a.name} (₹):`
-    );
-    if (input === null) return;
+  async function reportBalance(a: Account, input: string) {
     const paise = parseRupees(input);
     if (paise === null) return;
     const signed = a.kind === "liability" ? -paise : paise;
@@ -227,7 +225,7 @@ export default function AccountsPage() {
                 right={<Amount paise={total} />}
                 sub={envelopes.length > 0 ? `Available ${formatPaise(own)} · set aside ${formatPaise(total - own)}` : undefined}
                 gap={gap}
-                onReport={() => reportBalance(b)}
+                onReport={() => setReconFor(b)}
                 onArchive={() => archive(b)}
               />
               {envelopes.map((env) => (
@@ -266,7 +264,7 @@ export default function AccountsPage() {
                 ].filter(Boolean).join(" · ")}
                 gap={gap}
                 gapLabel="vs card app"
-                onReport={() => reportBalance(card)}
+                onReport={() => setReconFor(card)}
                 onArchive={() => archive(card)}
               />
               {subs.map((s) => (
@@ -284,7 +282,7 @@ export default function AccountsPage() {
           <div key={l.id} className="border border-rule bg-paper-raised">
             <Row name={l.name}
               right={<Amount paise={displayBalance(l, balances.get(l.id)?.balance_paise ?? 0)} />}
-              onReport={() => reportBalance(l)}
+              onReport={() => setReconFor(l)}
               gap={l.reported_balance_paise !== null
                 ? l.reported_balance_paise - (balances.get(l.id)?.balance_paise ?? 0)
                 : null}
@@ -322,6 +320,20 @@ export default function AccountsPage() {
           </div>
         ))}
       </Section>
+
+      <InputModal
+        open={reconFor !== null}
+        title={reconFor ? `Reconcile ${reconFor.name}` : ""}
+        label={reconFor?.kind === "liability"
+          ? "Actual outstanding from the card/bank app (₹)"
+          : "Actual balance from the bank app (₹)"}
+        placeholder="0"
+        submitLabel="Save"
+        onSubmit={async (v) => {
+          if (reconFor) await reportBalance(reconFor, v);
+        }}
+        onClose={() => setReconFor(null)}
+      />
     </div>
   );
 }

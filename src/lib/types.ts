@@ -32,20 +32,14 @@ export interface Account {
 
 export type TxnStatus = "pending" | "done";
 
-export type SpendTag = "avoidable" | "partially_avoidable" | "deferrable";
-
-export const TAG_LABEL: Record<SpendTag, string> = {
-  avoidable: "avoidable",
-  partially_avoidable: "partly avoidable",
-  deferrable: "deferrable",
-};
+export const DEFAULT_TAGS = ["avoidable", "partially avoidable", "deferrable"];
 
 export interface Transaction {
   id: string;
   date: string; // yyyy-mm-dd
   description: string;
   status: TxnStatus;
-  tag: SpendTag | null;
+  tag: string | null;
   recurring_template_id: string | null;
   reimburse_account_id: string | null;
   reimburse_amount_paise: number | null;

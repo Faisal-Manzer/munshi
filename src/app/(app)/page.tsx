@@ -1,17 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useLedger, accountById } from "@/lib/use-ledger";
-import { createEntry, rewriteEntry } from "@/lib/postings";
+import { createEntry } from "@/lib/postings";
 import { Amount } from "@/components/amount";
+import { AccountSelect, NEW_CATEGORY } from "@/components/account-select";
+import { InputModal } from "@/components/modal";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { subtreeBalance, toISODate } from "@/lib/ledger";
 import {
-  TAG_LABEL,
+  DEFAULT_TAGS,
   type Account,
   type Posting,
   type RecurringTemplate,
-  type SpendTag,
   type Transaction,
 } from "@/lib/types";
 
@@ -30,12 +31,19 @@ interface VirtualRow {
 }
 type Row = TxnRow | VirtualRow;
 
+function fmtDate(iso: string) {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+}
+
 export default function BookPage() {
   const { supabase, accounts, balances, cycles, loading, reload } = useLedger();
   const [txns, setTxns] = useState<(Transaction & { postings: Posting[] })[]>([]);
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [month, setMonth] = useState(() => toISODate(new Date()).slice(0, 7));
   const [error, setError] = useState<string | null>(null);
+  const [notesOpen, setNotesOpen] = useState<string | null>(null);
+  const [postModal, setPostModal] = useState<RecurringTemplate | null>(null);
 
   const today = toISODate(new Date());
   const active = useMemo(() => accounts.filter((a) => !a.archived), [accounts]);
@@ -69,6 +77,12 @@ export default function BookPage() {
     () => Promise.all([load(), reload()]),
     [load, reload]
   );
+
+  const knownTags = useMemo(() => {
+    const s = new Set(DEFAULT_TAGS);
+    for (const t of txns) if (t.tag) s.add(t.tag);
+    return [...s];
+  }, [txns]);
 
   // ---- build unified rows
   const daysInMonth = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
@@ -111,7 +125,7 @@ export default function BookPage() {
     .reduce((s, t) => s + t.amount_paise, 0);
   const expectedBack = templates.reduce((s, t) => s + (t.reimburse_amount_paise ?? 0), 0);
   const avoidable = txns
-    .filter((t) => t.tag)
+    .filter((t) => t.tag?.toLowerCase().includes("avoid"))
     .reduce((s, t) => {
       const neg = t.postings.find((p) => p.amount_paise < 0);
       return s + (neg ? -neg.amount_paise : 0);
@@ -128,20 +142,14 @@ export default function BookPage() {
     }
     return Math.max(0, billed - paid);
   };
-  const cardUnbilled = (card: Account) => {
-    let s = 0;
-    for (const c of [card, ...active.filter((a) => a.parent_id === card.id)]) {
-      s += -(cycles.get(c.id)?.spends_since_paise ?? 0);
-    }
-    return s;
-  };
+  const cardUnbilled = (card: Account) =>
+    [card, ...active.filter((a) => a.parent_id === card.id)]
+      .reduce((s, c) => s + -(cycles.get(c.id)?.spends_since_paise ?? 0), 0);
   const totalDue = parentCards.reduce((s, c) => s + cardDueNow(c), 0);
 
   // ---- actions
-  async function postVirtual(t: RecurringTemplate) {
-    const input = prompt(`Post "${t.name}" — actual amount ₹:`, String(t.amount_paise / 100));
-    if (input === null) return;
-    const paise = parseRupees(input);
+  async function postVirtual(t: RecurringTemplate, amountStr: string) {
+    const paise = parseRupees(amountStr);
     if (!paise || paise <= 0) return;
     const scale = paise / t.amount_paise;
     try {
@@ -165,19 +173,8 @@ export default function BookPage() {
     }
   }
 
-  async function markPaid(row: TxnRow) {
-    await supabase
-      .from("transactions")
-      .update({ status: "done", date: today })
-      .eq("id", row.txn.id);
-    await refreshAll();
-  }
-
-  async function setTag(row: TxnRow, tag: string) {
-    await supabase
-      .from("transactions")
-      .update({ tag: tag || null })
-      .eq("id", row.txn.id);
+  async function patchTxn(id: string, patch: Partial<Transaction>) {
+    await supabase.from("transactions").update(patch).eq("id", id);
     await refreshAll();
   }
 
@@ -199,6 +196,10 @@ export default function BookPage() {
 
   return (
     <div className="space-y-5">
+      <datalist id="known-tags">
+        {knownTags.map((t) => <option key={t} value={t} />)}
+      </datalist>
+
       {/* header */}
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
@@ -206,7 +207,7 @@ export default function BookPage() {
           <h1 className="text-3xl">{monthName}</h1>
           <button onClick={() => shiftMonth(1)} className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft">→</button>
         </div>
-        <div className="flex gap-4 text-sm flex-wrap">
+        <div className="flex gap-5 text-sm flex-wrap">
           <Headline label="in" paise={plannedIn} cls="text-ledger" />
           <Headline label="committed" paise={committed} />
           <Headline label="card due" paise={totalDue} cls={totalDue > 0 ? "text-debit" : ""} />
@@ -218,23 +219,13 @@ export default function BookPage() {
 
       {error && <p className="text-sm text-debit border border-debit-soft bg-debit-soft px-3 py-2">{error}</p>}
 
-      <div className="grid lg:grid-cols-[1fr_290px] gap-5 items-start">
+      <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start">
         {/* ledger */}
         <div className="border border-rule bg-paper-raised">
-          <QuickAdd accounts={active} onCreate={async (e) => {
-            try {
-              await createEntry(supabase, e);
-              setError(null);
-              await refreshAll();
-              return true;
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "failed");
-              return false;
-            }
-          }} />
+          <QuickAdd accounts={active} supabase={supabase} onDone={refreshAll} onError={setError} />
           <table className="ledger-grid w-full text-sm">
             <tbody>
-              {rows.map((row, i) => {
+              {rows.map((row) => {
                 if (row.kind === "virtual") {
                   const t = row.template;
                   const overdue = row.date < today;
@@ -242,7 +233,7 @@ export default function BookPage() {
                   const isIn = from?.kind === "income";
                   return (
                     <tr key={"v" + t.id} className={overdue ? "bg-debit-soft/40" : "bg-paper"}>
-                      <td className="px-3 py-2 w-10 text-right amount text-ink-faint">{Number(row.date.slice(8, 10))}</td>
+                      <td className="px-3 py-2 w-20 whitespace-nowrap amount text-ink-faint">{fmtDate(row.date)}</td>
                       <td className="px-2 py-2">
                         <span className={overdue ? "text-debit" : "text-ink-soft"}>{t.name}</span>
                         <span className="text-xs text-ink-faint"> · {from?.name} → {accountById(accounts, t.to_account_id)?.name}</span>
@@ -251,8 +242,8 @@ export default function BookPage() {
                       <td className="px-2 py-2 text-right w-32">
                         <Amount paise={isIn ? t.amount_paise : -t.amount_paise} signed />
                       </td>
-                      <td className="px-2 py-2 w-40 text-right" colSpan={2}>
-                        <button onClick={() => postVirtual(t)}
+                      <td className="px-2 py-2 w-44 text-right" colSpan={3}>
+                        <button onClick={() => setPostModal(t)}
                           className={`text-xs border px-2 py-1 ${overdue ? "border-debit text-debit hover:bg-debit-soft" : "border-ledger text-ledger hover:bg-ledger-soft"}`}>
                           post today
                         </button>
@@ -267,34 +258,69 @@ export default function BookPage() {
                 const isInternal = from?.kind === "asset" && to?.kind === "asset" && to?.subtype !== "receivable";
                 const pending = t.status === "pending";
                 return (
-                  <tr key={t.id} className={pending ? "bg-pending-soft/40" : ""}>
-                    <td className="px-3 py-1.5 w-10 text-right amount text-ink-faint">{Number(t.date.slice(8, 10))}</td>
-                    <td className="px-2 py-1.5">
-                      {t.description}
-                      <span className="text-xs text-ink-faint"> · {from?.name}{isInternal ? " ⇄ " : " → "}{to?.name}</span>
-                      {t.recurring_template_id && <span className="text-xs text-ledger"> ✓</span>}
-                      {pending && <span className="text-xs text-pending"> · pending</span>}
-                    </td>
-                    <td className="px-2 py-1.5 text-right w-32">
-                      <Amount paise={isIn ? row.amountPaise : isInternal ? row.amountPaise : -row.amountPaise}
-                        signed={!isInternal} className={isInternal ? "text-ink-faint" : ""} />
-                    </td>
-                    <td className="px-2 py-1.5 w-28">
-                      <select value={t.tag ?? ""} onChange={(e) => setTag(row, e.target.value)}
-                        className={`text-xs w-full bg-transparent ${t.tag ? "text-pending" : "text-ink-faint"}`}>
-                        <option value="">— tag</option>
-                        {Object.entries(TAG_LABEL).map(([k, v]) => (
-                          <option key={k} value={k}>{v}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-2 py-1.5 w-12 text-right whitespace-nowrap">
-                      {pending && (
-                        <button onClick={() => markPaid(row)} className="text-xs text-ledger hover:underline mr-1">paid</button>
-                      )}
-                      <button onClick={() => remove(row)} className="text-ink-faint hover:text-debit">×</button>
-                    </td>
-                  </tr>
+                  <Fragment key={t.id}>
+                    <tr className={pending ? "bg-pending-soft/40" : ""}>
+                      <td className="px-3 py-1.5 w-20 whitespace-nowrap amount text-ink-faint">{fmtDate(t.date)}</td>
+                      <td className="px-2 py-1.5">
+                        {t.description}
+                        <span className="text-xs text-ink-faint"> · {from?.name}{isInternal ? " ⇄ " : " → "}{to?.name}</span>
+                        {t.recurring_template_id && <span className="text-xs text-ledger"> ✓</span>}
+                        {pending && <span className="text-xs text-pending"> · pending</span>}
+                        {t.notes && <span className="text-xs text-ink-faint italic"> — {t.notes}</span>}
+                      </td>
+                      <td className="px-2 py-1.5 text-right w-32">
+                        <Amount paise={isIn ? row.amountPaise : isInternal ? row.amountPaise : -row.amountPaise}
+                          signed={!isInternal} className={isInternal ? "text-ink-faint" : ""} />
+                      </td>
+                      <td className="px-1 py-1.5 w-32">
+                        <input
+                          list="known-tags"
+                          defaultValue={t.tag ?? ""}
+                          placeholder="tag"
+                          onBlur={(e) => {
+                            const v = e.target.value.trim();
+                            if (v !== (t.tag ?? "")) patchTxn(t.id, { tag: v || null });
+                          }}
+                          className={`w-full text-xs px-1 py-0.5 bg-transparent ${t.tag ? "text-pending" : "text-ink-faint"}`}
+                        />
+                      </td>
+                      <td className="px-1 py-1.5 w-8 text-center">
+                        <button onClick={() => setNotesOpen(notesOpen === t.id ? null : t.id)}
+                          className={`text-xs ${t.notes ? "text-ledger" : "text-ink-faint"} hover:text-ledger`}
+                          title="Note">✎</button>
+                      </td>
+                      <td className="px-2 py-1.5 w-16 text-right whitespace-nowrap">
+                        {pending && (
+                          <button onClick={() => patchTxn(t.id, { status: "done", date: today })}
+                            className="text-xs text-ledger hover:underline mr-1">paid</button>
+                        )}
+                        <button onClick={() => remove(row)} className="text-ink-faint hover:text-debit">×</button>
+                      </td>
+                    </tr>
+                    {notesOpen === t.id && (
+                      <tr>
+                        <td></td>
+                        <td colSpan={5} className="px-2 pb-2">
+                          <input
+                            autoFocus
+                            defaultValue={t.notes ?? ""}
+                            placeholder="Note… (Enter saves)"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                patchTxn(t.id, { notes: (e.target as HTMLInputElement).value.trim() || null });
+                                setNotesOpen(null);
+                              }
+                            }}
+                            onBlur={(e) => {
+                              patchTxn(t.id, { notes: e.target.value.trim() || null });
+                              setNotesOpen(null);
+                            }}
+                            className="w-full text-xs px-2 py-1 border border-rule bg-paper"
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -338,8 +364,7 @@ export default function BookPage() {
                     <Amount paise={due} className={due > 0 ? "text-debit" : "text-ink-faint"} />
                   </div>
                   <p className="text-[11px] text-ink-faint">
-                    {due > 0 ? `bill due ${c.due_day ?? "—"}th` : "bill clear"} ·
-                    unbilled {formatPaise(unbilled)} (cuts {c.statement_day ?? "—"}rd)
+                    {due > 0 ? `bill due ${c.due_day}` : "bill clear"} · unbilled {formatPaise(unbilled)} (cuts {c.statement_day})
                   </p>
                 </div>
               );
@@ -371,6 +396,18 @@ export default function BookPage() {
           </SideBlock>
         </aside>
       </div>
+
+      <InputModal
+        open={postModal !== null}
+        title={postModal ? `Post "${postModal.name}"` : ""}
+        label="Actual amount (₹) — planned amount prefilled"
+        defaultValue={postModal ? String(postModal.amount_paise / 100) : ""}
+        submitLabel="Post today"
+        onSubmit={async (v) => {
+          if (postModal) await postVirtual(postModal, v);
+        }}
+        onClose={() => setPostModal(null)}
+      />
     </div>
   );
 }
@@ -394,17 +431,21 @@ function SideBlock({ title, children }: { title: string; children: React.ReactNo
 }
 
 function QuickAdd({
-  accounts, onCreate,
+  accounts, supabase, onDone, onError,
 }: {
   accounts: Account[];
-  onCreate: (e: Parameters<typeof createEntry>[1]) => Promise<boolean>;
+  supabase: ReturnType<typeof useLedger>["supabase"];
+  onDone: () => Promise<unknown>;
+  onError: (m: string | null) => void;
 }) {
   const [date, setDate] = useState(() => toISODate(new Date()));
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
   const [fromId, setFromId] = useState("");
   const [toId, setToId] = useState("");
-  const [tag, setTagV] = useState("");
+  const [tag, setTag] = useState("");
+  const [note, setNote] = useState("");
+  const [newCatOpen, setNewCatOpen] = useState(false);
 
   const fromChoices = accounts.filter((a) =>
     ["bank", "envelope", "cash", "investment", "credit_card", "receivable", "salary", "other_income"].includes(a.subtype)
@@ -414,52 +455,79 @@ function QuickAdd({
   );
   const spends = accounts.find((a) => a.name === "Spends" && a.kind === "expense");
 
+  async function createCategory(name: string) {
+    if (!name.trim()) return;
+    const { data, error } = await supabase
+      .from("accounts")
+      .insert({ name: name.trim(), kind: "expense", subtype: "general_expense" })
+      .select()
+      .single();
+    if (error) {
+      onError(error.message);
+      return;
+    }
+    await onDone();
+    setToId(data.id);
+  }
+
   async function submit() {
     const paise = parseRupees(amount);
     if (!desc.trim() || !fromId || !paise || paise <= 0) return;
-    const ok = await onCreate({
-      date,
-      description: desc.trim(),
-      status: "done",
-      fromAccountId: fromId,
-      toAccountId: toId || spends?.id || "",
-      amountPaise: paise,
-      tag: tag || null,
-    });
-    if (ok) {
+    try {
+      await createEntry(supabase, {
+        date,
+        description: desc.trim(),
+        status: "done",
+        fromAccountId: fromId,
+        toAccountId: toId || spends?.id || "",
+        amountPaise: paise,
+        tag: tag.trim() || null,
+        notes: note.trim() || null,
+      });
+      onError(null);
+      await onDone();
       setDesc("");
       setAmount("");
-      setTagV("");
+      setTag("");
+      setNote("");
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "failed");
     }
   }
 
   return (
-    <div className="flex flex-wrap gap-0 border-b border-rule-strong bg-ledger-soft/50"
-      onKeyDown={(e) => e.key === "Enter" && submit()}>
-      <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-        className="px-2 py-2 text-sm bg-transparent w-32" />
-      <input value={desc} onChange={(e) => setDesc(e.target.value)}
-        placeholder="What happened… (Enter saves)"
-        className="px-2 py-2 text-sm bg-transparent flex-1 min-w-40" />
-      <input value={amount} onChange={(e) => setAmount(e.target.value)}
-        placeholder="₹" inputMode="decimal"
-        className="px-2 py-2 text-sm bg-transparent w-24 text-right amount" />
-      <select value={fromId} onChange={(e) => setFromId(e.target.value)}
-        className="px-1 py-2 text-sm bg-transparent w-32">
-        <option value="">from…</option>
-        {fromChoices.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-      </select>
-      <select value={toId} onChange={(e) => setToId(e.target.value)}
-        className="px-1 py-2 text-sm bg-transparent w-32">
-        <option value="">→ Spends</option>
-        {toChoices.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-      </select>
-      <select value={tag} onChange={(e) => setTagV(e.target.value)}
-        className="px-1 py-2 text-xs bg-transparent w-24 text-ink-faint">
-        <option value="">tag…</option>
-        {Object.entries(TAG_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-      </select>
-      <button onClick={submit} className="px-3 text-ledger text-sm font-medium hover:underline">Add</button>
-    </div>
+    <>
+      <div className="flex flex-wrap gap-0 border-b border-rule-strong bg-ledger-soft/50"
+        onKeyDown={(e) => e.key === "Enter" && submit()}>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+          className="px-2 py-2 text-sm bg-transparent w-36" />
+        <input value={desc} onChange={(e) => setDesc(e.target.value)}
+          placeholder="What happened… (Enter saves)"
+          className="px-2 py-2 text-sm bg-transparent flex-1 min-w-40" />
+        <input value={amount} onChange={(e) => setAmount(e.target.value)}
+          placeholder="₹" inputMode="decimal"
+          className="px-2 py-2 text-sm bg-transparent w-24 text-right amount" />
+        <AccountSelect value={fromId} onChange={setFromId} choices={fromChoices}
+          placeholder="from…" className="px-1 py-2 text-sm bg-transparent w-36" />
+        <AccountSelect value={toId} choices={toChoices} allowCreate
+          placeholder="→ Spends"
+          onChange={(v) => (v === NEW_CATEGORY ? setNewCatOpen(true) : setToId(v))}
+          className="px-1 py-2 text-sm bg-transparent w-36" />
+        <input value={tag} onChange={(e) => setTag(e.target.value)} list="known-tags"
+          placeholder="tag" className="px-2 py-2 text-xs bg-transparent w-24" />
+        <input value={note} onChange={(e) => setNote(e.target.value)}
+          placeholder="note" className="px-2 py-2 text-xs bg-transparent w-28" />
+        <button onClick={submit} className="px-3 text-ledger text-sm font-medium hover:underline">Add</button>
+      </div>
+      <InputModal
+        open={newCatOpen}
+        title="New category"
+        label="Category name (e.g. Swiggy, Transport, Groceries)"
+        placeholder="Category"
+        submitLabel="Create"
+        onSubmit={createCategory}
+        onClose={() => setNewCatOpen(false)}
+      />
+    </>
   );
 }

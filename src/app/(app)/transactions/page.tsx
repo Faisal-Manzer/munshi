@@ -5,6 +5,7 @@ import { useLedger } from "@/lib/use-ledger";
 import { createEntry, rewriteEntry, type EntryInput } from "@/lib/postings";
 import { formatPaisePlain, parseRupees } from "@/lib/money";
 import { toISODate } from "@/lib/ledger";
+import { AccountSelect } from "@/components/account-select";
 import type { Account, Posting, Transaction } from "@/lib/types";
 
 interface Row {
@@ -193,26 +194,6 @@ export default function TransactionsPage() {
         (their share) or set To = person (they owe the full amount).
       </p>
     </div>
-  );
-}
-
-function AccountSelect({
-  value, onChange, choices, placeholder,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  choices: Account[];
-  placeholder?: string;
-}) {
-  return (
-    <select value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">{placeholder ?? "—"}</option>
-      {choices.map((a) => (
-        <option key={a.id} value={a.id}>
-          {a.parent_id ? "· " : ""}{a.name}
-        </option>
-      ))}
-    </select>
   );
 }
 
