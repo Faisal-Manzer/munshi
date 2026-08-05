@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useLedger } from "@/lib/use-ledger";
+import { Field } from "@/components/field";
 import { Modal } from "@/components/modal";
 import { Select } from "@/components/select";
 import { parseRupees } from "@/lib/money";
@@ -182,38 +183,62 @@ export function AccountModal({
   const input = "border border-rule px-2 py-1.5 text-sm bg-paper-raised w-full";
   const canOpen = opt && ["bank", "cash", "loan", "credit_card", "receivable", "investment"].includes(opt.subtype);
 
+  const editingLabel = editing
+    ? NEW_OPTIONS.find((o) => o.subtype === editing.subtype &&
+        (o.needsParent ? editing.parent_id !== null : editing.parent_id === null))?.label ??
+      editing.subtype.replace(/_/g, " ")
+    : null;
+
   return (
-    <Modal open={open} title={editing ? `Edit ${editing.name}` : "New account"} onClose={onClose}>
+    <Modal open={open} title={editing ? editing.name : "New account"}
+      subtitle={editing ? `${editingLabel} — settings` : undefined} onClose={onClose}>
       <div className="space-y-3">
         {!editing && options.length > 1 && (
-          <Select chrome value={String(optIdx)} onChange={(v) => setOptIdx(Number(v))}
-            groups={[{ options: options.map((o, i) => ({ value: String(i), label: o.label })) }]} />
+          <Field label="Account type">
+            <Select chrome value={String(optIdx)} onChange={(v) => setOptIdx(Number(v))}
+              groups={[{ options: options.map((o, i) => ({ value: String(i), label: o.label })) }]} />
+          </Field>
         )}
         {!editing && options.length === 1 && (
           <p className="text-xs text-ink-faint">{options[0].label}</p>
         )}
-        <input className={input} value={name} onChange={(e) => setName(e.target.value)}
-          placeholder="Name" autoFocus
-          onKeyDown={(e) => e.key === "Enter" && save()} />
+        <Field label="Name">
+          <input className={input} value={name} onChange={(e) => setName(e.target.value)}
+            placeholder={opt?.subtype === "receivable" ? "e.g. Farzan" : "e.g. ICICI, Amazon 1008"} autoFocus
+            onKeyDown={(e) => e.key === "Enter" && save()} />
+        </Field>
         {!editing && opt?.needsParent && (
-          <Select chrome value={parentId} onChange={setParentId}
-            placeholder={`Parent ${opt.needsParent === "bank" ? "bank" : "card"}…`}
-            groups={[{ options: parentChoices.map((p) => ({ value: p.id, label: p.name })) }]} />
+          <Field label={opt.needsParent === "bank" ? "Parent bank" : "Parent card"}
+            hint={opt.needsParent === "bank"
+              ? "The bank this envelope's money sits in"
+              : "Bills fold into this card's statement"}>
+            <Select chrome value={parentId} onChange={setParentId} placeholder="Choose…"
+              groups={[{ options: parentChoices.map((p) => ({ value: p.id, label: p.name })) }]} />
+          </Field>
         )}
         {isCard && (
           <>
-            <input className={input} value={stmtDay} onChange={(e) => setStmtDay(e.target.value)}
-              placeholder="Statement day (1–31)" inputMode="numeric" />
-            <input className={input} value={dueDay} onChange={(e) => setDueDay(e.target.value)}
-              placeholder="Due day (1–31)" inputMode="numeric" />
-            <input className={input} value={limit} onChange={(e) => setLimit(e.target.value)}
-              placeholder="Credit limit ₹ (optional)" inputMode="decimal" />
+            <Field label="Statement day" hint="Day of the month the bill is generated (1–31)">
+              <input className={input} value={stmtDay} onChange={(e) => setStmtDay(e.target.value)}
+                placeholder="e.g. 3" inputMode="numeric" />
+            </Field>
+            <Field label="Due day" hint="Day of the month payment is due (1–31)">
+              <input className={input} value={dueDay} onChange={(e) => setDueDay(e.target.value)}
+                placeholder="e.g. 19" inputMode="numeric" />
+            </Field>
+            <Field label="Credit limit (₹)" hint="Optional">
+              <input className={input} value={limit} onChange={(e) => setLimit(e.target.value)}
+                placeholder="e.g. 1,00,000" inputMode="decimal" />
+            </Field>
           </>
         )}
         {!editing && canOpen && (
-          <input className={input} value={opening} onChange={(e) => setOpening(e.target.value)}
-            placeholder={opt?.kind === "liability" ? "Current outstanding ₹ (optional)" : "Current balance ₹ (optional)"}
-            inputMode="decimal" />
+          <Field
+            label={opt?.kind === "liability" ? "Current outstanding (₹)" : "Current balance (₹)"}
+            hint="Optional — posts an opening entry so the books match reality">
+            <input className={input} value={opening} onChange={(e) => setOpening(e.target.value)}
+              placeholder="0" inputMode="decimal" />
+          </Field>
         )}
         {liquidToggleable && (
           <label className="flex items-center gap-2 text-sm text-ink-soft">

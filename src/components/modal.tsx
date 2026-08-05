@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 
 export function Modal({
-  open, title, onClose, children, wide,
+  open, title, subtitle, onClose, children, wide,
 }: {
   open: boolean;
   title: string;
+  /** Context line under the title — what kind of thing is being edited. */
+  subtitle?: string;
   onClose: () => void;
   children: React.ReactNode;
   wide?: boolean;
@@ -24,7 +26,10 @@ export function Modal({
       style={{ background: "rgba(28,36,32,0.35)" }} onMouseDown={onClose}>
       <div className={`w-full ${wide ? "max-w-xl" : "max-w-sm"} border border-rule-strong bg-paper-raised shadow-xl max-h-[90vh] overflow-y-auto`}
         onMouseDown={(e) => e.stopPropagation()}>
-        <p className="px-4 pt-3 pb-2 text-sm font-medium border-b border-rule">{title}</p>
+        <div className="px-4 pt-3 pb-2 border-b border-rule">
+          <p className="text-sm font-medium">{title}</p>
+          {subtitle && <p className="text-xs text-ink-faint">{subtitle}</p>}
+        </div>
         <div className="p-4">{children}</div>
       </div>
     </div>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useLedger } from "@/lib/use-ledger";
+import { Field } from "@/components/field";
 import { Modal } from "@/components/modal";
 import { Select } from "@/components/select";
 import { accountGroups } from "@/components/account-select";
@@ -27,7 +28,8 @@ export function TemplateModal({
 }) {
   return (
     <Modal open={open} wide onClose={onClose}
-      title={editing ? `Edit "${editing.name}"` : "New recurring item"}>
+      title={editing ? editing.name : "New recurring item"}
+      subtitle={editing ? "Recurring item — happens every month" : "Salary, rent, EMI, budget — anything that repeats monthly"}>
       <TemplateForm key={editing?.id ?? "new"} accounts={accounts} editing={editing}
         onSaved={onSaved} />
     </Modal>
@@ -129,47 +131,64 @@ function TemplateForm({
     onSaved();
   }
 
-  const input = "border border-rule px-2 py-1.5 text-sm bg-paper-raised";
+  const input = "border border-rule px-2 py-1.5 text-sm bg-paper-raised w-full";
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      <input className={input} value={name} onChange={(e) => setName(e.target.value)}
-        placeholder="Name (e.g. Business EMI, Rent)" />
-      <Select chrome value={kind} onChange={(v) => setKind(v as RecurringKind)}
-        groups={[{ options: Object.entries(RECURRING_KIND_LABEL).map(([k, label]) => ({ value: k, label })) }]} />
-      <input className={input} value={day} onChange={(e) => setDay(e.target.value)}
-        placeholder="Day of month (1–31)" inputMode="numeric" />
-      <input className={input} value={amount} onChange={(e) => setAmount(e.target.value)}
-        placeholder="Amount ₹" inputMode="decimal" />
-      <Select chrome value={fromId} onChange={setFromId} placeholder="Paid from…"
-        groups={accountGroups(fromChoices)} />
-      <Select chrome value={toId} onChange={setToId} placeholder="Pays for… (expense / loan)"
-        groups={accountGroups(toChoices)} />
-      <input className={input} value={installments} onChange={(e) => setInstallments(e.target.value)}
-        placeholder="Total installments (EMIs, optional)" inputMode="numeric" />
+      <Field label="Name">
+        <input className={input} value={name} onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Rent, Business EMI" />
+      </Field>
+      <Field label="How it's paid">
+        <Select chrome value={kind} onChange={(v) => setKind(v as RecurringKind)}
+          groups={[{ options: Object.entries(RECURRING_KIND_LABEL).map(([k, label]) => ({ value: k, label })) }]} />
+      </Field>
+      <Field label="Day of month" hint="When it lands each month (1–31)">
+        <input className={input} value={day} onChange={(e) => setDay(e.target.value)}
+          placeholder="e.g. 5" inputMode="numeric" />
+      </Field>
+      <Field label="Amount (₹)">
+        <input className={input} value={amount} onChange={(e) => setAmount(e.target.value)}
+          placeholder="e.g. 24,000" inputMode="decimal" />
+      </Field>
+      <Field label="Paid from" hint="Where the money leaves — bank, card, income source">
+        <Select chrome value={fromId} onChange={setFromId} placeholder="Choose…"
+          groups={accountGroups(fromChoices)} />
+      </Field>
+      <Field label="Pays for" hint="Expense category, loan, or account it lands in">
+        <Select chrome value={toId} onChange={setToId} placeholder="Choose…"
+          groups={accountGroups(toChoices)} />
+      </Field>
+      <Field label="Total installments" hint="For EMIs — leave empty for open-ended items">
+        <input className={input} value={installments} onChange={(e) => setInstallments(e.target.value)}
+          placeholder="e.g. 12" inputMode="numeric" />
+      </Field>
       {installments && (
-        <div className="flex items-center gap-2 text-xs text-ink-soft">
-          <span className="whitespace-nowrap">First installment</span>
-          <div className="flex-1">
-            {startDate ? (
-              <DateInput chrome value={startDate} onChange={setStartDate} />
-            ) : (
-              <button type="button" onClick={() => setStartDate(toISODate(new Date()))}
-                className="border border-rule px-2 py-1.5 text-sm bg-paper-raised w-full text-left text-ink-faint">
-                pick date…
-              </button>
-            )}
-          </div>
-        </div>
+        <Field label="First installment date" hint="Sets the EMI window — progress shows as n/total">
+          {startDate ? (
+            <DateInput chrome value={startDate} onChange={setStartDate} />
+          ) : (
+            <button type="button" onClick={() => setStartDate(toISODate(new Date()))}
+              className="border border-rule px-2 py-1.5 text-sm bg-paper-raised w-full text-left text-ink-faint">
+              pick date…
+            </button>
+          )}
+        </Field>
       )}
-      <Select chrome value={personId} onChange={setPersonId} placeholder="Someone repays part? (optional)"
-        groups={[{ options: [{ value: "", label: "No one repays" },
-          ...people.map((p) => ({ value: p.id, label: p.name }))] }]} />
+      <Field label="Someone repays part?" hint="Their share lands on what they owe you each month">
+        <Select chrome value={personId} onChange={setPersonId} placeholder="No one repays"
+          groups={[{ options: [{ value: "", label: "No one repays" },
+            ...people.map((p) => ({ value: p.id, label: p.name }))] }]} />
+      </Field>
       {personId && (
         <>
-          <input className={input} value={personAmt} onChange={(e) => setPersonAmt(e.target.value)}
-            placeholder="Their share ₹" inputMode="decimal" />
-          <input className={input} value={personDay} onChange={(e) => setPersonDay(e.target.value)}
-            placeholder="Expected repay day (1–31)" inputMode="numeric" />
+          <Field label="Their share (₹)">
+            <input className={input} value={personAmt} onChange={(e) => setPersonAmt(e.target.value)}
+              placeholder="e.g. 8,500" inputMode="decimal" />
+          </Field>
+          <Field label="Expected repay day" hint="Day of the month you expect it back (1–31)">
+            <input className={input} value={personDay} onChange={(e) => setPersonDay(e.target.value)}
+              placeholder="e.g. 10" inputMode="numeric" />
+          </Field>
         </>
       )}
       <label className="flex items-center gap-2 text-sm text-ink-soft sm:col-span-2">

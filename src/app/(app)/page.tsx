@@ -8,6 +8,7 @@ import { AccountSelect, NEW_CATEGORY } from "@/components/account-select";
 import { Select } from "@/components/select";
 import { TitleInput, useTitleSuggestions } from "@/components/title-input";
 import { DateInput } from "@/components/date-input";
+import { Field } from "@/components/field";
 import { InputModal, Modal } from "@/components/modal";
 import { AccountModal, BLOCK_OPTIONS } from "@/components/account-modal";
 import { CategoriesModal } from "@/components/categories-modal";
@@ -824,21 +825,24 @@ export default function BookPage() {
       <Modal
         open={receiveModal !== null}
         title={receiveModal?.label ?? ""}
+        subtitle="Record money received"
         onClose={() => setReceiveModal(null)}
       >
-        <input
-          value={receiveAmt}
-          onChange={(e) => setReceiveAmt(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && recordReceive()}
-          inputMode="decimal"
-          placeholder="Amount ₹"
-          className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised amount"
-          autoFocus
-        />
-        <div className="mt-2">
-          <Select chrome value={receiveBank} onChange={setReceiveBank} placeholder="into…"
-            groups={[{ options: banks.map((b) => ({ value: b.id, label: `into ${b.name}` })) }]} />
-        </div>
+        <Field label="Amount received (₹)">
+          <input
+            value={receiveAmt}
+            onChange={(e) => setReceiveAmt(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && recordReceive()}
+            inputMode="decimal"
+            placeholder="0"
+            className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised amount"
+            autoFocus
+          />
+        </Field>
+        <Field label="Into account" className="mt-2">
+          <Select chrome value={receiveBank} onChange={setReceiveBank} placeholder="Choose…"
+            groups={[{ options: banks.map((b) => ({ value: b.id, label: b.name })) }]} />
+        </Field>
         <div className="flex justify-end gap-2 mt-4">
           <button onClick={() => setReceiveModal(null)} className="text-sm text-ink-soft px-3 py-1.5 hover:text-ink">
             Cancel
@@ -954,17 +958,22 @@ function CoverModal({
   );
   const paise = parseRupees(amt);
   return (
-    <Modal open title={`Cover "${row.txn.description}"`} onClose={onClose}>
-      <p className="text-xs text-ink-soft mb-2">
+    <Modal open title={`Cover "${row.txn.description}"`}
+      subtitle={`Refill ${target?.name} from the account that was meant to pay`} onClose={onClose}>
+      <p className="text-xs text-ink-soft mb-3">
         {target?.name} paid this as a stand-in — record the transfer that
         refills it from the account that was really meant to pay.
       </p>
-      <Select chrome value={sourceId} onChange={setSourceId} placeholder="Pull funds from…"
-        groups={[{ options: sources.map((a) => ({ value: a.id, label: `${a.name} → ${target?.name}` })) }]} />
-      <input value={amt} onChange={(e) => setAmt(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && sourceId && paise && paise > 0 && onSave(sourceId, paise)}
-        inputMode="decimal" placeholder="Amount ₹"
-        className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised amount mt-2" />
+      <Field label="Pull funds from">
+        <Select chrome value={sourceId} onChange={setSourceId} placeholder="Choose…"
+          groups={[{ options: sources.map((a) => ({ value: a.id, label: `${a.name} → ${target?.name}` })) }]} />
+      </Field>
+      <Field label="Amount (₹)" className="mt-2">
+        <input value={amt} onChange={(e) => setAmt(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && sourceId && paise && paise > 0 && onSave(sourceId, paise)}
+          inputMode="decimal" placeholder="0"
+          className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised amount" />
+      </Field>
       <div className="flex justify-end gap-2 mt-4">
         <button onClick={onClose} className="text-sm text-ink-soft px-3 py-1.5 hover:text-ink">
           Cancel
@@ -1003,18 +1012,24 @@ function SplitModal({
   if (!row) return null;
   const paise = parseRupees(amt);
   return (
-    <Modal open title={`Split "${row.txn.description}"`} onClose={onClose}>
-      <p className="text-xs text-ink-soft mb-2">
+    <Modal open title={`Split "${row.txn.description}"`}
+      subtitle="Someone owes part of this expense" onClose={onClose}>
+      <p className="text-xs text-ink-soft mb-3">
         Their share is added to what they owe you; your expense shrinks by the same amount.
       </p>
-      <Select chrome value={personId} onChange={setPersonId} placeholder="No split"
-        groups={[{ options: [{ value: "", label: "No split" },
-          ...people.map((p) => ({ value: p.id, label: p.name }))] }]} />
+      <Field label="Who owes part?">
+        <Select chrome value={personId} onChange={setPersonId} placeholder="No split"
+          groups={[{ options: [{ value: "", label: "No split" },
+            ...people.map((p) => ({ value: p.id, label: p.name }))] }]} />
+      </Field>
       {personId && (
-        <input value={amt} onChange={(e) => setAmt(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && onSave(personId, paise)}
-          inputMode="decimal" placeholder="Their share ₹"
-          className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised amount mt-2" />
+        <Field label="Their share (₹)" className="mt-2"
+          hint={`Must be less than the full ${formatPaise(row.amountPaise)}`}>
+          <input value={amt} onChange={(e) => setAmt(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && onSave(personId, paise)}
+            inputMode="decimal" placeholder="0"
+            className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised amount" />
+        </Field>
       )}
       <div className="flex justify-end gap-2 mt-4">
         <button onClick={onClose} className="text-sm text-ink-soft px-3 py-1.5 hover:text-ink">
