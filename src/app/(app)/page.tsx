@@ -661,16 +661,30 @@ export default function BookPage() {
                   {recAt && (
                     <p className="text-[11px] text-ink-faint">✓ reconciled {recAt}</p>
                   )}
-                  {subs.map((sc) => (
-                    <div key={sc.id} className="pl-3 pr-9 py-0.5 flex items-baseline justify-between gap-2">
-                      <button onClick={() => openSheet(sc.id)}
-                        className="text-xs text-ink-soft text-left hover:text-ledger" title={`${sc.name} — details`}>
-                        ↳ {sc.name}
-                      </button>
-                      <Amount paise={(cycles.get(sc.id)?.spends_since_paise ?? 0) + (cycles.get(sc.id)?.billed_paise ?? 0) + (cycles.get(sc.id)?.payments_since_paise ?? 0)}
-                        className="text-xs text-ink-faint" />
-                    </div>
-                  ))}
+                  {subs.length > 0 && (() => {
+                    const subOwed = (id: string) =>
+                      (cycles.get(id)?.spends_since_paise ?? 0) +
+                      (cycles.get(id)?.billed_paise ?? 0) +
+                      (cycles.get(id)?.payments_since_paise ?? 0);
+                    const own = -owed - subs.reduce((sum, sc) => sum + subOwed(sc.id), 0);
+                    return (
+                      <>
+                        <div className="pl-3 pr-9 py-0.5 flex items-baseline justify-between gap-2">
+                          <span className="text-xs text-ink-soft">↳ {c.name} itself</span>
+                          <Amount paise={own} className="text-xs text-ink-faint" />
+                        </div>
+                        {subs.map((sc) => (
+                          <div key={sc.id} className="pl-3 pr-9 py-0.5 flex items-baseline justify-between gap-2">
+                            <button onClick={() => openSheet(sc.id)}
+                              className="text-xs text-ink-soft text-left hover:text-ledger" title={`${sc.name} — details`}>
+                              ↳ {sc.name}
+                            </button>
+                            <Amount paise={subOwed(sc.id)} className="text-xs text-ink-faint" />
+                          </div>
+                        ))}
+                      </>
+                    );
+                  })()}
                 </div>
               );
             })}
