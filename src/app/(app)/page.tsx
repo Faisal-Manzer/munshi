@@ -25,7 +25,7 @@ import {
   parentCardsOf,
 } from "@/lib/calc";
 import { emiActive, emiInfo, fmtMonth } from "@/lib/emi";
-import { ArrowLeftRight, HandCoins, Pencil, Plus, RotateCcw, Scale, Settings2, Users } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, HandCoins, Pencil, Plus, RotateCcw, Scale, Settings2, Users } from "lucide-react";
 import {
   DEFAULT_TAGS,
   type Account,
@@ -627,7 +627,7 @@ export default function BookPage() {
           </SideBlock>
 
           <SideBlock title="Cards"
-            total={<span className={`amount text-xs ${totalCardOwed > 0 ? "text-debit" : ""}`}>{formatPaise(totalCardOwed)}</span>}
+            total={<span className={`amount text-xs ${totalCardOwed > 0 ? "text-debit" : ""}`}>{formatPaise(-totalCardOwed)}</span>}
             action={<IconBtn title="Add card / sub-card" onClick={() => setCreateAcct(BLOCK_OPTIONS.cards)}>
               <Plus size={13} />
             </IconBtn>}>
@@ -646,7 +646,7 @@ export default function BookPage() {
                       className="text-sm text-left hover:text-ledger" title={`${c.name} — details`}>
                       {c.name}
                     </button>
-                    <AmountCell paise={owed} label={owed > 0 ? "you owe" : "clear"}
+                    <AmountCell paise={-owed} label={owed > 0 ? "you owe" : "clear"}
                       cls={owed > 0 ? "text-debit" : "text-ink-faint"}
                       action={<IconBtn title={`Reconcile ${c.name}`} onClick={() => setReconFor(c)}>
                         <Scale size={13} />
@@ -667,7 +667,7 @@ export default function BookPage() {
                         className="text-xs text-ink-soft text-left hover:text-ledger" title={`${sc.name} — details`}>
                         ↳ {sc.name}
                       </button>
-                      <Amount paise={-(cycles.get(sc.id)?.spends_since_paise ?? 0) + -(cycles.get(sc.id)?.billed_paise ?? 0) - (cycles.get(sc.id)?.payments_since_paise ?? 0)}
+                      <Amount paise={(cycles.get(sc.id)?.spends_since_paise ?? 0) + (cycles.get(sc.id)?.billed_paise ?? 0) + (cycles.get(sc.id)?.payments_since_paise ?? 0)}
                         className="text-xs text-ink-faint" />
                     </div>
                   ))}
@@ -680,8 +680,9 @@ export default function BookPage() {
             total={(() => {
               const net = active.filter((a) => a.subtype === "receivable")
                 .reduce((sum, a) => sum + (balances.get(a.id)?.balance_paise ?? 0), 0);
-              return <span className={`amount text-xs ${net > 0 ? "text-ledger" : net < 0 ? "text-debit" : ""}`}>
-                {formatPaise(Math.abs(net))}{net !== 0 ? (net > 0 ? " net in" : " net out") : ""}
+              return <span className={`inline-flex items-center gap-0.5 amount text-xs ${net > 0 ? "text-ledger" : net < 0 ? "text-debit" : ""}`}>
+                {net > 0 && <ArrowDownLeft size={10} className="text-ledger" />}
+                {formatPaise(net)}
               </span>;
             })()}
             action={<IconBtn title="Add person" onClick={() => setAddPersonOpen(true)}>
@@ -702,9 +703,10 @@ export default function BookPage() {
                           className="text-sm text-left hover:text-ledger" title={`${p.name} — full ledger`}>
                           {p.name}
                         </button>
-                        <AmountCell paise={Math.abs(bal)}
+                        <AmountCell paise={bal}
                           label={bal > 0 ? "owes you" : "you owe"}
                           cls={bal > 0 ? "text-ledger" : "text-debit"}
+                          incoming={bal > 0}
                           action={bal > 0 ? (
                             <IconBtn title={`Record money received from ${p.name}`}
                               onClick={() => openReceive({
@@ -767,7 +769,7 @@ export default function BookPage() {
             total={(() => {
               const rem = active.filter((a) => a.subtype === "loan")
                 .reduce((sum, a) => sum + Math.max(0, -(balances.get(a.id)?.balance_paise ?? 0)), 0);
-              return <span className={`amount text-xs ${rem > 0 ? "text-debit" : ""}`}>{formatPaise(rem)}</span>;
+              return <span className={`amount text-xs ${rem > 0 ? "text-debit" : ""}`}>{formatPaise(-rem)}</span>;
             })()}
             action={<IconBtn title="Add loan" onClick={() => setCreateAcct(BLOCK_OPTIONS.loans)}>
               <Plus size={13} />
@@ -785,7 +787,7 @@ export default function BookPage() {
                       {l.name}
                     </button>
                     {remaining > 0 ? (
-                      <AmountCell paise={remaining} label="you owe" cls="text-debit" />
+                      <AmountCell paise={-remaining} label="you owe" cls="text-debit" />
                     ) : (
                       <AmountCell paise={bal} label="paid" cls="text-ink-faint" />
                     )}
@@ -1157,19 +1159,27 @@ function SideBlock({
   );
 }
 
-/** Right-hand cell every sidebar tile shares: amount + what it means, same spot. */
+/**
+ * Right-hand cell every sidebar tile shares. Sign convention:
+ * what you owe is negative (red), what you have is positive (ink),
+ * what's coming to you is positive green with an incoming arrow.
+ */
 function AmountCell({
-  paise, label, cls = "", action,
+  paise, label, cls = "", incoming = false, action,
 }: {
   paise: number;
   label: string;
   cls?: string;
+  incoming?: boolean;
   action?: React.ReactNode;
 }) {
   return (
     <div className="flex items-start gap-1.5 shrink-0">
       <div className="text-right">
-        <Amount paise={paise} className={cls} />
+        <span className="inline-flex items-center gap-0.5">
+          {incoming && <ArrowDownLeft size={11} className="text-ledger" />}
+          <Amount paise={paise} className={cls} />
+        </span>
         <p className="text-[10px] text-ink-faint leading-tight">{label}</p>
       </div>
       {action}

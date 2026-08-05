@@ -10,7 +10,7 @@ import { emiInfo, fmtMonth } from "@/lib/emi";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { displayBalance, subtreeBalance, toISODate } from "@/lib/ledger";
 import { cardDueNow, cardUnbilled } from "@/lib/calc";
-import { Scale, X } from "lucide-react";
+import { ArrowDownLeft, Scale, X } from "lucide-react";
 import type { Account, AccountSubtype, Posting, RecurringTemplate, Transaction } from "@/lib/types";
 
 const SUBTYPE_LABEL: Record<AccountSubtype, string> = {
@@ -296,15 +296,20 @@ function BalanceSummary({
   let main: number;
   let label: string;
   let detail: string | null = null;
+  let cls = "";
+  let incoming = false;
 
   if (account.subtype === "receivable") {
-    main = Math.abs(bal);
+    main = bal; // signed: what they owe you is +, what you owe is −
     label = bal > 0 ? "owes you" : bal < 0 ? "you owe" : "all settled";
+    cls = bal > 0 ? "text-ledger" : bal < 0 ? "text-debit" : "";
+    incoming = bal > 0;
   } else if (account.subtype === "credit_card" && account.parent_id === null) {
     const due = cardDueNow(active, cycles, account);
     const unbilled = cardUnbilled(active, cycles, account);
-    main = due + unbilled;
-    label = "owed";
+    main = -(due + unbilled);
+    label = due + unbilled > 0 ? "you owe" : "clear";
+    cls = due + unbilled > 0 ? "text-debit" : "";
     detail = [
       due > 0 ? `due ${formatPaise(due)}` : null,
       unbilled > 0 ? `unbilled ${formatPaise(unbilled)}` : null,
@@ -322,7 +327,9 @@ function BalanceSummary({
       }
     }
     if (main >= 0) {
-      label = "remaining";
+      label = "you owe";
+      cls = main > 0 ? "text-debit" : "";
+      main = -main;
     } else {
       label = "paid so far";
       main = -main;
@@ -344,7 +351,10 @@ function BalanceSummary({
 
   return (
     <div className="px-5 pb-3">
-      <p className="amount text-2xl">{formatPaise(main)}</p>
+      <p className={`amount text-2xl inline-flex items-center gap-1 ${cls}`}>
+        {incoming && <ArrowDownLeft size={18} className="text-ledger" />}
+        {formatPaise(main)}
+      </p>
       <p className="text-xs text-ink-faint">{label}{detail ? ` · ${detail}` : ""}</p>
     </div>
   );
