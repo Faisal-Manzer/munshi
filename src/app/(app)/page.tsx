@@ -650,13 +650,13 @@ export default function BookPage() {
                       cls={owed > 0 ? "text-debit" : "text-ink-faint"} />
                   </div>
                   {due > 0 && (
-                    <div className="pl-3 pr-3 py-0.5 flex items-baseline justify-between gap-2">
+                    <div className="pl-3 py-0.5 flex items-baseline justify-between gap-2">
                       <span className="text-xs text-ink-soft">↳ Due by the {ordinal(c.due_day)}</span>
                       <Amount paise={-due} className="text-xs text-debit" />
                     </div>
                   )}
                   {unbilled > 0 && (
-                    <div className="pl-3 pr-3 py-0.5 flex items-baseline justify-between gap-2">
+                    <div className="pl-3 py-0.5 flex items-baseline justify-between gap-2">
                       <span className="text-xs text-ink-soft">↳ Unbilled · bills the {ordinal(c.statement_day)}</span>
                       <Amount paise={-unbilled} className="text-xs" />
                     </div>
@@ -672,12 +672,12 @@ export default function BookPage() {
                     const own = -owed - subs.reduce((sum, sc) => sum + subOwed(sc.id), 0);
                     return (
                       <>
-                        <div className="pl-3 pr-3 py-0.5 flex items-baseline justify-between gap-2">
+                        <div className="pl-3 py-0.5 flex items-baseline justify-between gap-2">
                           <span className="text-xs text-ink-soft">↳ {c.name} itself</span>
                           <Amount paise={own} className="text-xs text-ink-faint" />
                         </div>
                         {subs.map((sc) => (
-                          <div key={sc.id} className="pl-3 pr-3 py-0.5 flex items-baseline justify-between gap-2">
+                          <div key={sc.id} className="pl-3 py-0.5 flex items-baseline justify-between gap-2">
                             <button onClick={() => openSheet(sc.id)}
                               className="text-xs text-ink-soft text-left hover:text-ledger" title={`${sc.name} — details`}>
                               ↳ {sc.name}
