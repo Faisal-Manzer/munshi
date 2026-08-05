@@ -13,6 +13,7 @@ import { InputModal, Modal } from "@/components/modal";
 import { AccountModal, BLOCK_OPTIONS } from "@/components/account-modal";
 import { AccountSheet } from "@/components/account-sheet";
 import { CategoriesModal } from "@/components/categories-modal";
+import { ReconcileModal } from "@/components/reconcile-modal";
 import { TemplateModal } from "@/components/template-form";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { subtreeBalance, toISODate } from "@/lib/ledger";
@@ -316,17 +317,6 @@ export default function BookPage() {
     }
   }
 
-  async function reconcile(a: Account, input: string) {
-    const paise = parseRupees(input);
-    if (paise === null) return;
-    const signed = a.kind === "liability" ? -paise : paise;
-    await supabase
-      .from("accounts")
-      .update({ reported_balance_paise: signed, reported_at: new Date().toISOString() })
-      .eq("id", a.id);
-    await reload();
-  }
-
   async function addPerson(name: string) {
     if (!name.trim()) return;
     const { error: e } = await supabase.from("accounts").insert({
@@ -601,7 +591,9 @@ export default function BookPage() {
               const total = subtreeBalance(accounts, balances, b.id);
               const own = balances.get(b.id)?.balance_paise ?? 0;
               const envs = active.filter((e) => e.parent_id === b.id);
-              const gap = b.reported_balance_paise !== null ? b.reported_balance_paise - total : null;
+              const recAt = b.reported_at
+                ? new Date(b.reported_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })
+                : null;
               return (
                 <div key={b.id}>
                   <div className="px-3 py-1.5 flex items-center justify-between gap-2">
@@ -613,10 +605,8 @@ export default function BookPage() {
                       {envs.length > 0 && (
                         <p className="text-[11px] text-ink-faint">free {formatPaise(own)}</p>
                       )}
-                      {gap !== null && gap !== 0 && (
-                        <p className="text-[11px] text-debit">
-                          {gap > 0 ? "+" : ""}{formatPaise(gap)} vs bank
-                        </p>
+                      {recAt && (
+                        <p className="text-[11px] text-ink-faint">✓ reconciled {recAt}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -649,7 +639,9 @@ export default function BookPage() {
               const unbilled = cardUnbilled(c);
               const owed = due + unbilled;
               const subs = active.filter((s) => s.parent_id === c.id);
-              const gap = c.reported_balance_paise !== null ? -c.reported_balance_paise - owed : null;
+              const recAt = c.reported_at
+                ? new Date(c.reported_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })
+                : null;
               return (
                 <div key={c.id} className="px-3 py-1.5">
                   <div className="flex items-center justify-between gap-2">
@@ -675,10 +667,8 @@ export default function BookPage() {
                       incl. {subs.map((s) => s.name).join(", ")}
                     </p>
                   )}
-                  {gap !== null && gap !== 0 && (
-                    <p className="text-[11px] text-debit">
-                      {formatPaise(Math.abs(gap))} {gap > 0 ? "unlogged on card" : "over-logged"}
-                    </p>
+                  {recAt && (
+                    <p className="text-[11px] text-ink-faint">✓ reconciled {recAt}</p>
                   )}
                 </div>
               );
@@ -821,17 +811,9 @@ export default function BookPage() {
         </div>
       </Modal>
 
-      <InputModal
-        open={reconFor !== null}
-        title={reconFor ? `Reconcile ${reconFor.name}` : ""}
-        label={reconFor?.kind === "liability"
-          ? "Actual outstanding from the card/bank app (₹)"
-          : "Actual balance from the bank app (₹)"}
-        placeholder="0"
-        submitLabel="Save"
-        onSubmit={async (v) => {
-          if (reconFor) await reconcile(reconFor, v);
-        }}
+      <ReconcileModal
+        account={reconFor}
+        onDone={refreshAll}
         onClose={() => setReconFor(null)}
       />
 
