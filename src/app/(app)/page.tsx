@@ -25,7 +25,7 @@ import {
   parentCardsOf,
 } from "@/lib/calc";
 import { emiActive, emiInfo, fmtMonth } from "@/lib/emi";
-import { ArrowDownLeft, ArrowLeftRight, HandCoins, Pencil, Plus, RotateCcw, Scale, Settings2, Users } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, HandCoins, Pencil, Plus, RotateCcw, Settings2, Users } from "lucide-react";
 import {
   DEFAULT_TAGS,
   type Account,
@@ -607,10 +607,7 @@ export default function BookPage() {
                         <p className="text-[11px] text-ink-faint">✓ reconciled {recAt}</p>
                       )}
                     </div>
-                    <AmountCell paise={total}
-                      action={<IconBtn title={`Reconcile ${b.name}`} onClick={() => setReconFor(b)}>
-                        <Scale size={13} />
-                      </IconBtn>} />
+                    <AmountCell paise={total} />
                   </div>
                   {envs.map((env) => (
                     <div key={env.id} className="pl-6 pr-3 py-1 flex items-baseline justify-between gap-2">
@@ -647,10 +644,7 @@ export default function BookPage() {
                       {c.name}
                     </button>
                     <AmountCell paise={-owed}
-                      cls={owed > 0 ? "text-debit" : "text-ink-faint"}
-                      action={<IconBtn title={`Reconcile ${c.name}`} onClick={() => setReconFor(c)}>
-                        <Scale size={13} />
-                      </IconBtn>} />
+                      cls={owed > 0 ? "text-debit" : "text-ink-faint"} />
                   </div>
                   <p className="text-[11px] text-ink-faint">
                     {due > 0 && <>due {formatPaise(due)} by the {ordinal(c.due_day)} · </>}
@@ -713,14 +707,12 @@ export default function BookPage() {
                   {owing.map(({ p, bal }) => (
                     <div key={p.id} className="px-3 py-1.5">
                       <div className="flex items-center justify-between gap-2">
-                        <button onClick={() => openSheet(p.id)}
-                          className="text-sm text-left hover:text-ledger" title={`${p.name} — full ledger`}>
-                          {p.name}
-                        </button>
-                        <AmountCell paise={bal}
-                          cls={bal > 0 ? "text-ledger" : "text-debit"}
-                          incoming={bal > 0}
-                          action={bal > 0 ? (
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <button onClick={() => openSheet(p.id)}
+                            className="text-sm text-left hover:text-ledger truncate" title={`${p.name} — full ledger`}>
+                            {p.name}
+                          </button>
+                          {bal > 0 && (
                             <IconBtn title={`Record money received from ${p.name}`}
                               onClick={() => openReceive({
                                 personId: p.id,
@@ -729,7 +721,11 @@ export default function BookPage() {
                               })}>
                               <HandCoins size={13} />
                             </IconBtn>
-                          ) : undefined} />
+                          )}
+                        </span>
+                        <AmountCell paise={bal}
+                          cls={bal > 0 ? "text-ledger" : "text-debit"}
+                          incoming={bal > 0} />
                       </div>
                     </div>
                   ))}
@@ -770,10 +766,7 @@ export default function BookPage() {
                   className="text-sm text-left hover:text-ledger" title={`${v.name} — details`}>
                   {v.name}
                 </button>
-                <AmountCell paise={balances.get(v.id)?.balance_paise ?? 0}
-                  action={<IconBtn title={`Reconcile ${v.name}`} onClick={() => setReconFor(v)}>
-                    <Scale size={13} />
-                  </IconBtn>} />
+                <AmountCell paise={balances.get(v.id)?.balance_paise ?? 0} />
               </div>
             ))}
           </SideBlock>
