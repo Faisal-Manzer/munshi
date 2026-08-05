@@ -768,20 +768,37 @@ export default function BookPage() {
             action={<IconBtn title="Add loan" onClick={() => setCreateAcct(BLOCK_OPTIONS.loans)}>
               <Plus size={13} />
             </IconBtn>}>
-            {active.filter((a) => a.subtype === "loan").map((l) => (
-              <div key={l.id} className="px-3 py-1.5 flex items-center justify-between gap-2">
-                <button onClick={() => openSheet(l.id)}
-                  className="text-sm text-left hover:text-ledger" title={`${l.name} — details`}>
-                  {l.name}
-                </button>
-                <div className="flex items-center gap-1.5">
-                  <Amount paise={-(balances.get(l.id)?.balance_paise ?? 0)} />
-                  <IconBtn title={`Reconcile ${l.name}`} onClick={() => setReconFor(l)}>
-                    <Scale size={13} />
-                  </IconBtn>
+            {active.filter((a) => a.subtype === "loan").map((l) => {
+              const bal = balances.get(l.id)?.balance_paise ?? 0;
+              const remaining = -bal; // liability: negative ledger balance = owed
+              const tpl = templates.find((t) => t.to_account_id === l.id);
+              const e = tpl ? emiInfo(tpl, month) : null;
+              return (
+                <div key={l.id} className="px-3 py-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <button onClick={() => openSheet(l.id)}
+                      className="text-sm text-left hover:text-ledger" title={`${l.name} — details`}>
+                      {l.name}
+                    </button>
+                    {remaining > 0 ? (
+                      <Amount paise={remaining} />
+                    ) : (
+                      <Amount paise={bal} className="text-ink-faint" />
+                    )}
+                  </div>
+                  <p className="text-[11px] text-ink-faint">
+                    {remaining > 0
+                      ? <>remaining{e && <> · EMI {Math.min(Math.max(e.idx, 0), e.total)}/{e.total} · ends {fmtMonth(e.endISO)}</>}</>
+                      : bal !== 0
+                        ? <>{formatPaise(bal)} paid ·{" "}
+                            <button onClick={() => openSheet(l.id)} className="text-debit hover:underline">
+                              set outstanding
+                            </button></>
+                        : "nothing tracked yet"}
+                  </p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </SideBlock>
         </aside>
       </div>

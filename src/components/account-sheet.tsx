@@ -5,12 +5,13 @@ import { useLedger } from "@/lib/use-ledger";
 import { Amount } from "@/components/amount";
 import { Field } from "@/components/field";
 import { Select } from "@/components/select";
-import { createEntry } from "@/lib/postings";
+import { createEntry, postEquityAdjustment } from "@/lib/postings";
+import { emiInfo, fmtMonth } from "@/lib/emi";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { displayBalance, subtreeBalance, toISODate } from "@/lib/ledger";
 import { cardDueNow, cardUnbilled } from "@/lib/calc";
 import { Scale, X } from "lucide-react";
-import type { Account, AccountSubtype, Posting, Transaction } from "@/lib/types";
+import type { Account, AccountSubtype, Posting, RecurringTemplate, Transaction } from "@/lib/types";
 
 const SUBTYPE_LABEL: Record<AccountSubtype, string> = {
   bank: "Bank account",
@@ -49,12 +50,29 @@ export function AccountSheet({
   const [rows, setRows] = useState<HistoryRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settleOpen, setSettleOpen] = useState(false);
+  const [outstandingOpen, setOutstandingOpen] = useState(false);
+  const [loanTemplate, setLoanTemplate] = useState<RecurringTemplate | null>(null);
 
   useEffect(() => {
     setTab("history");
     setSettleOpen(false);
+    setOutstandingOpen(false);
     setRows(null);
   }, [accountId]);
+
+  // the EMI template that pays this loan, if any — shows progress + remaining
+  useEffect(() => {
+    setLoanTemplate(null);
+    if (!accountId) return;
+    supabase
+      .from("recurring_templates")
+      .select("*")
+      .eq("to_account_id", accountId)
+      .eq("active", true)
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setLoanTemplate((data as RecurringTemplate) ?? null));
+  }, [supabase, accountId]);
 
   const loadHistory = useCallback(async () => {
     if (!accountId) return;
@@ -100,6 +118,7 @@ export function AccountSheet({
 
   const bal = account ? balances.get(account.id)?.balance_paise ?? 0 : 0;
   const isPerson = account?.subtype === "receivable";
+  const isLoan = account?.subtype === "loan";
   const isParentCard = account?.subtype === "credit_card" && account.parent_id === null;
   const isReconcilable = account
     ? ["bank", "cash", "envelope", "investment", "credit_card", "loan"].includes(account.subtype)
@@ -119,7 +138,7 @@ export function AccountSheet({
           <>
             <SheetHeader account={account} supabase={supabase} onSaved={refreshAll} onClose={onClose} />
             <BalanceSummary account={account} accounts={accounts} active={active}
-              balances={balances} cycles={cycles} />
+              balances={balances} cycles={cycles} loanTemplate={loanTemplate} />
 
             {/* actions */}
             <div className="px-5 py-3 flex flex-wrap gap-2 border-b border-rule">
@@ -133,7 +152,21 @@ export function AccountSheet({
                   {bal > 0 ? "Settle up — they paid you" : "Settle up — you paid them"}
                 </ActionBtn>
               )}
+              {isLoan && (
+                <ActionBtn onClick={() => setOutstandingOpen((v) => !v)} primary={bal >= 0}>
+                  Set outstanding
+                </ActionBtn>
+              )}
             </div>
+
+            {outstandingOpen && isLoan && account && (
+              <OutstandingForm account={account} balance={bal} supabase={supabase}
+                onDone={async () => {
+                  setOutstandingOpen(false);
+                  await refreshAll();
+                }}
+                onError={setError} />
+            )}
 
             {settleOpen && isPerson && (
               <SettleForm account={account} balance={bal} banks={active.filter((a) => a.is_liquid)}
@@ -225,13 +258,14 @@ function SheetHeader({
 }
 
 function BalanceSummary({
-  account, accounts, active, balances, cycles,
+  account, accounts, active, balances, cycles, loanTemplate,
 }: {
   account: Account;
   accounts: Account[];
   active: Account[];
   balances: ReturnType<typeof useLedger>["balances"];
   cycles: ReturnType<typeof useLedger>["cycles"];
+  loanTemplate: RecurringTemplate | null;
 }) {
   const bal = balances.get(account.id)?.balance_paise ?? 0;
 
@@ -253,11 +287,24 @@ function BalanceSummary({
     ].filter(Boolean).join(" · ") || "nothing owed";
   } else if (account.subtype === "loan") {
     main = displayBalance(account, bal);
-    label = main >= 0 ? "remaining" : "paid";
-    if (main < 0) {
-      main = -main;
-      detail = "payments logged without an outstanding amount — set it in Settings";
+    const parts: string[] = [];
+    if (loanTemplate) {
+      const e = emiInfo(loanTemplate, toISODate(new Date()).slice(0, 7));
+      if (e) {
+        const done = Math.min(Math.max(e.idx, 0), e.total);
+        parts.push(`EMI ${done}/${e.total} · ${formatPaise(loanTemplate.amount_paise)}/mo · ends ${fmtMonth(e.endISO)}`);
+      } else {
+        parts.push(`${formatPaise(loanTemplate.amount_paise)}/mo`);
+      }
     }
+    if (main >= 0) {
+      label = "remaining";
+    } else {
+      label = "paid so far";
+      main = -main;
+      parts.push("outstanding not set — use “Set outstanding” to track what's left");
+    }
+    detail = parts.join(" · ") || null;
   } else if (account.kind === "income") {
     main = -bal;
     label = "earned (all time)";
@@ -295,6 +342,52 @@ function ActionBtn({
       }`}>
       {children}
     </button>
+  );
+}
+
+function OutstandingForm({
+  account, balance, supabase, onDone, onError,
+}: {
+  account: Account;
+  balance: number;
+  supabase: ReturnType<typeof useLedger>["supabase"];
+  onDone: () => Promise<void>;
+  onError: (m: string | null) => void;
+}) {
+  const current = displayBalance(account, balance); // positive = remaining owed
+  const [amt, setAmt] = useState(current > 0 ? String(current / 100) : "");
+
+  async function submit() {
+    const paise = parseRupees(amt);
+    if (paise === null || paise < 0) return;
+    // target ledger balance for a liability is -outstanding
+    const delta = -paise - balance;
+    try {
+      await postEquityAdjustment(
+        supabase, account.id, delta,
+        `Outstanding set — ${account.name}`, toISODate(new Date())
+      );
+      onError(null);
+      await onDone();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "failed");
+    }
+  }
+
+  return (
+    <div className="px-5 py-3 border-b border-rule bg-ledger-soft/30 space-y-2">
+      <Field label="Remaining outstanding today (₹)"
+        hint="From your loan app/statement — posts a balanced opening adjustment; payments you log keep reducing it">
+        <input value={amt} onChange={(e) => setAmt(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          inputMode="decimal" autoFocus placeholder="e.g. 1,40,436"
+          className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised amount" />
+      </Field>
+      <button onClick={submit}
+        className="text-sm bg-ledger text-paper-raised px-4 py-1.5 hover:opacity-90">
+        Save outstanding
+      </button>
+    </div>
   );
 }
 

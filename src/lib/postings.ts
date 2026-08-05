@@ -61,6 +61,51 @@ export async function createEntry(supabase: SupabaseClient, e: EntryInput) {
   return txn;
 }
 
+/**
+ * Post a balanced equity adjustment that moves `accountId` to a target
+ * balance: used for loan outstanding and opening corrections. `deltaPaise`
+ * is the signed change to the account's ledger balance.
+ */
+export async function postEquityAdjustment(
+  supabase: SupabaseClient,
+  accountId: string,
+  deltaPaise: number,
+  description: string,
+  date: string
+) {
+  if (deltaPaise === 0) return;
+  let { data: equity } = await supabase
+    .from("accounts")
+    .select("*")
+    .eq("subtype", "opening_balance")
+    .limit(1)
+    .maybeSingle();
+  if (!equity) {
+    const { data: eq, error: ee } = await supabase
+      .from("accounts")
+      .insert({ name: "Opening balances", kind: "equity", subtype: "opening_balance" })
+      .select()
+      .single();
+    if (ee) throw ee;
+    equity = eq;
+  }
+  const { data: txn, error } = await supabase
+    .from("transactions")
+    .insert({ date, description, status: "done" })
+    .select()
+    .single();
+  if (error) throw error;
+  const { error: pe } = await supabase.from("postings").insert([
+    { transaction_id: txn.id, account_id: accountId, amount_paise: deltaPaise },
+    { transaction_id: txn.id, account_id: equity.id, amount_paise: -deltaPaise },
+  ]);
+  if (pe) {
+    await supabase.from("transactions").delete().eq("id", txn.id);
+    throw pe;
+  }
+  return txn;
+}
+
 export async function rewriteEntry(
   supabase: SupabaseClient,
   txnId: string,
