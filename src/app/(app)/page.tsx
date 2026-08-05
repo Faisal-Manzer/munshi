@@ -600,15 +600,18 @@ export default function BookPage() {
                         className="text-sm text-left hover:text-ledger" title={`${b.name} — details`}>
                         {b.name}
                       </button>
-                      {envs.length > 0 && (
-                        <p className="text-[11px] text-ink-faint">free {formatPaise(own)}</p>
-                      )}
                       {recAt && (
                         <p className="text-[11px] text-ink-faint">✓ reconciled {recAt}</p>
                       )}
                     </div>
                     <AmountCell paise={total} />
                   </div>
+                  {envs.length > 0 && (
+                    <div className="pl-6 pr-3 py-1 flex items-baseline justify-between gap-2">
+                      <span className="text-xs text-ink-soft">↳ Free</span>
+                      <Amount paise={own} className="text-xs" />
+                    </div>
+                  )}
                   {envs.map((env) => (
                     <div key={env.id} className="pl-6 pr-3 py-1 flex items-baseline justify-between gap-2">
                       <button onClick={() => openSheet(env.id)}
