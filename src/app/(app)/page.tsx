@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLedger, accountById } from "@/lib/use-ledger";
 import { createEntry, rewriteEntry, type EntryInput } from "@/lib/postings";
 import { Amount } from "@/components/amount";
-import { AccountSelect, NEW_CATEGORY } from "@/components/account-select";
+import { AccountSelect, NEW_CATEGORY, accountGroups } from "@/components/account-select";
 import { Select } from "@/components/select";
 import { TitleInput, useTitleSuggestions } from "@/components/title-input";
 import { DateInput } from "@/components/date-input";
@@ -25,7 +25,7 @@ import {
   parentCardsOf,
 } from "@/lib/calc";
 import { emiActive, emiInfo, fmtMonth } from "@/lib/emi";
-import { ArrowDownLeft, ArrowLeftRight, Pencil, Plus, RotateCcw, Settings2, Users } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, Pencil, Plus, RotateCcw, Search, Settings2, Users, X } from "lucide-react";
 import {
   DEFAULT_TAGS,
   type Account,
@@ -93,6 +93,11 @@ export default function BookPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [openingOpen, setOpeningOpen] = useState(false);
   const [minMonth, setMinMonth] = useState<string | null>(null);
+  // ledger filter/search
+  const [query, setQuery] = useState("");
+  const [fAcct, setFAcct] = useState("");
+  const [fTag, setFTag] = useState("");
+  const [fStatus, setFStatus] = useState(""); // "" | done | pending | projected
 
   const today = toISODate(new Date());
   const active = useMemo(() => accounts.filter((a) => !a.archived), [accounts]);
@@ -232,8 +237,36 @@ export default function BookPage() {
     r.kind === "txn" &&
     r.txn.postings.some((p) => accountById(accounts, p.account_id)?.kind === "equity");
   const openingRows = rows.filter(isOpening) as TxnRow[];
-  const monthRows = rows.filter((r) => !isOpening(r));
+  let monthRows = rows.filter((r) => !isOpening(r));
   monthRows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  // ---- filter & search
+  const filtering = Boolean(query.trim() || fAcct || fTag || fStatus);
+  const totalRows = monthRows.length;
+  if (filtering) {
+    const q = query.trim().toLowerCase();
+    const rowAccounts = (r: Row): (string | null)[] =>
+      r.kind === "txn"
+        ? r.txn.postings.map((p) => p.account_id)
+        : [r.template.from_account_id, r.template.to_account_id, r.template.reimburse_account_id];
+    const rowText = (r: Row): string => {
+      const names = rowAccounts(r)
+        .map((id) => accountById(accounts, id)?.name ?? "")
+        .join(" ");
+      if (r.kind === "txn")
+        return `${r.txn.description} ${r.txn.notes ?? ""} ${r.txn.tag ?? ""} ${names}`;
+      return `${r.template.name} ${r.template.notes ?? ""} ${names}`;
+    };
+    const rowStatus = (r: Row): string =>
+      r.kind === "txn" ? r.txn.status : "projected";
+    monthRows = monthRows.filter((r) => {
+      if (q && !rowText(r).toLowerCase().includes(q)) return false;
+      if (fAcct && !rowAccounts(r).includes(fAcct)) return false;
+      if (fTag && !(r.kind === "txn" && r.txn.tag === fTag)) return false;
+      if (fStatus && rowStatus(r) !== fStatus) return false;
+      return true;
+    });
+  }
 
   // ---- summary
   const avoidable = txns
@@ -408,6 +441,37 @@ export default function BookPage() {
 
       <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start">
         {/* ledger */}
+        <div className="min-w-0 space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 border border-rule bg-paper-raised px-2 py-1">
+            <Search size={13} className="text-ink-faint shrink-0" />
+            <input value={query} onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search entries…"
+              className="text-sm bg-transparent w-44" />
+            {query && (
+              <button onClick={() => setQuery("")} aria-label="Clear search"
+                className="text-ink-faint hover:text-ink"><X size={12} /></button>
+            )}
+          </div>
+          <Select chrome value={fAcct} onChange={setFAcct} placeholder="Any account" className="w-44"
+            groups={[{ options: [{ value: "", label: "Any account" }] }, ...accountGroups(active)]} />
+          <Select chrome value={fTag} onChange={setFTag} placeholder="Any tag" className="w-32"
+            groups={[{ options: [{ value: "", label: "Any tag" },
+              ...knownTags.map((t) => ({ value: t, label: t }))] }]} />
+          <Select chrome value={fStatus} onChange={setFStatus} placeholder="Any status" className="w-32"
+            groups={[{ options: [
+              { value: "", label: "Any status" },
+              { value: "done", label: "Done" },
+              { value: "pending", label: "Planned" },
+              { value: "projected", label: "Projected" },
+            ] }]} />
+          {filtering && (
+            <button onClick={() => { setQuery(""); setFAcct(""); setFTag(""); setFStatus(""); }}
+              className="flex items-center gap-1 text-xs text-ink-soft hover:text-debit">
+              <X size={12} /> {monthRows.length} of {totalRows} — clear
+            </button>
+          )}
+        </div>
         <div className="border border-rule bg-paper-raised overflow-x-auto">
           <table className="ledger-grid w-full text-sm min-w-[540px] md:min-w-[860px]">
             <thead>
@@ -423,7 +487,7 @@ export default function BookPage() {
             </thead>
             <tbody>
               <QuickAddRow accounts={active} supabase={supabase} onDone={refreshAll} onError={setError} />
-              {openingRows.length > 0 && (
+              {!filtering && openingRows.length > 0 && (
                 <tr className="bg-paper">
                   <td className="px-2 py-1.5 amount text-ink-faint whitespace-nowrap">
                     {fmtDate(openingRows[0].date)}
@@ -438,7 +502,7 @@ export default function BookPage() {
                   <td colSpan={3}></td>
                 </tr>
               )}
-              {openingOpen && openingRows.map((row) => (
+              {!filtering && openingOpen && openingRows.map((row) => (
                 <TxnEditRow
                   key={"o" + row.txn.id}
                   row={row}
@@ -561,13 +625,16 @@ export default function BookPage() {
               })}
             </tbody>
           </table>
-          {monthRows.length === 0 && openingRows.length === 0 && (
+          {monthRows.length === 0 && (filtering || openingRows.length === 0) && (
             <p className="text-sm text-ink-faint p-4">
-              {isPastMonth
-                ? "Nothing was logged this month — past months show only real entries, nothing projected."
-                : "Empty month — add an entry above."}
+              {filtering
+                ? "Nothing matches the current filters."
+                : isPastMonth
+                  ? "Nothing was logged this month — past months show only real entries, nothing projected."
+                  : "Empty month — add an entry above."}
             </p>
           )}
+        </div>
         </div>
 
         {/* sidebar */}
