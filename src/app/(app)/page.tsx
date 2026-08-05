@@ -1156,9 +1156,12 @@ function SideBlock({
 }) {
   return (
     <div className="border border-rule bg-paper-raised">
-      <div className="flex items-baseline justify-between gap-2 px-3 pt-2 pb-1">
-        <p className="text-[10px] uppercase tracking-[0.15em] text-ink-faint">{title}</p>
-        <span className="flex items-center gap-1.5 ml-auto">{action}{total}</span>
+      <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-1">
+        <span className="flex items-center gap-1.5">
+          <p className="text-[10px] uppercase tracking-[0.15em] text-ink-faint">{title}</p>
+          {action}
+        </span>
+        {total}
       </div>
       <div className="divide-y divide-rule/60 pb-1">{children}</div>
     </div>
