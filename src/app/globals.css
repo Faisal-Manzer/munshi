@@ -74,6 +74,13 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .ledger-grid th {
   border-bottom: 1px solid var(--rule-strong);
 }
+/* column headers stay visible while the table scrolls */
+.ledger-grid thead th {
+  position: sticky;
+  top: 0;
+  background: var(--paper-raised);
+  z-index: 1;
+}
 .ledger-grid input, .ledger-grid select {
   background: transparent;
   width: 100%;
