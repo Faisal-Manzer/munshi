@@ -607,7 +607,7 @@ export default function BookPage() {
                         <p className="text-[11px] text-ink-faint">✓ reconciled {recAt}</p>
                       )}
                     </div>
-                    <AmountCell paise={total} label="balance"
+                    <AmountCell paise={total}
                       action={<IconBtn title={`Reconcile ${b.name}`} onClick={() => setReconFor(b)}>
                         <Scale size={13} />
                       </IconBtn>} />
@@ -646,7 +646,7 @@ export default function BookPage() {
                       className="text-sm text-left hover:text-ledger" title={`${c.name} — details`}>
                       {c.name}
                     </button>
-                    <AmountCell paise={-owed} label={owed > 0 ? "you owe" : "clear"}
+                    <AmountCell paise={-owed}
                       cls={owed > 0 ? "text-debit" : "text-ink-faint"}
                       action={<IconBtn title={`Reconcile ${c.name}`} onClick={() => setReconFor(c)}>
                         <Scale size={13} />
@@ -704,7 +704,6 @@ export default function BookPage() {
                           {p.name}
                         </button>
                         <AmountCell paise={bal}
-                          label={bal > 0 ? "owes you" : "you owe"}
                           cls={bal > 0 ? "text-ledger" : "text-debit"}
                           incoming={bal > 0}
                           action={bal > 0 ? (
@@ -757,7 +756,7 @@ export default function BookPage() {
                   className="text-sm text-left hover:text-ledger" title={`${v.name} — details`}>
                   {v.name}
                 </button>
-                <AmountCell paise={balances.get(v.id)?.balance_paise ?? 0} label="value"
+                <AmountCell paise={balances.get(v.id)?.balance_paise ?? 0}
                   action={<IconBtn title={`Reconcile ${v.name}`} onClick={() => setReconFor(v)}>
                     <Scale size={13} />
                   </IconBtn>} />
@@ -787,9 +786,9 @@ export default function BookPage() {
                       {l.name}
                     </button>
                     {remaining > 0 ? (
-                      <AmountCell paise={-remaining} label="you owe" cls="text-debit" />
+                      <AmountCell paise={-remaining} cls="text-debit" />
                     ) : (
-                      <AmountCell paise={bal} label="paid" cls="text-ink-faint" />
+                      <AmountCell paise={bal} cls="text-ink-faint" />
                     )}
                   </div>
                   <p className="text-[11px] text-ink-faint">
@@ -1160,28 +1159,23 @@ function SideBlock({
 }
 
 /**
- * Right-hand cell every sidebar tile shares. Sign convention:
- * what you owe is negative (red), what you have is positive (ink),
- * what's coming to you is positive green with an incoming arrow.
+ * Right-hand cell every sidebar tile shares. Sign convention carries the
+ * meaning: owe = negative red, have = positive ink, incoming = green + arrow.
  */
 function AmountCell({
-  paise, label, cls = "", incoming = false, action,
+  paise, cls = "", incoming = false, action,
 }: {
   paise: number;
-  label: string;
   cls?: string;
   incoming?: boolean;
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-1.5 shrink-0">
-      <div className="text-right">
-        <span className="inline-flex items-center gap-0.5">
-          {incoming && <ArrowDownLeft size={11} className="text-ledger" />}
-          <Amount paise={paise} className={cls} />
-        </span>
-        <p className="text-[10px] text-ink-faint leading-tight">{label}</p>
-      </div>
+    <div className="flex items-center gap-1.5 shrink-0">
+      <span className="inline-flex items-center gap-0.5">
+        {incoming && <ArrowDownLeft size={11} className="text-ledger" />}
+        <Amount paise={paise} className={cls} />
+      </span>
       {action}
     </div>
   );

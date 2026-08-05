@@ -301,14 +301,14 @@ function BalanceSummary({
 
   if (account.subtype === "receivable") {
     main = bal; // signed: what they owe you is +, what you owe is −
-    label = bal > 0 ? "owes you" : bal < 0 ? "you owe" : "all settled";
+    label = bal === 0 ? "all settled" : "";
     cls = bal > 0 ? "text-ledger" : bal < 0 ? "text-debit" : "";
     incoming = bal > 0;
   } else if (account.subtype === "credit_card" && account.parent_id === null) {
     const due = cardDueNow(active, cycles, account);
     const unbilled = cardUnbilled(active, cycles, account);
     main = -(due + unbilled);
-    label = due + unbilled > 0 ? "you owe" : "clear";
+    label = "";
     cls = due + unbilled > 0 ? "text-debit" : "";
     detail = [
       due > 0 ? `due ${formatPaise(due)}` : null,
@@ -327,7 +327,7 @@ function BalanceSummary({
       }
     }
     if (main >= 0) {
-      label = "you owe";
+      label = "";
       cls = main > 0 ? "text-debit" : "";
       main = -main;
     } else {
@@ -338,13 +338,13 @@ function BalanceSummary({
     detail = parts.join(" · ") || null;
   } else if (account.kind === "income") {
     main = -bal;
-    label = "earned (all time)";
+    label = "earned all time";
   } else if (account.kind === "expense") {
     main = bal;
-    label = "spent (all time)";
+    label = "spent all time";
   } else {
     main = subtreeBalance(accounts, balances, account.id);
-    label = "balance";
+    label = "";
     const own = bal;
     if (main !== own) detail = `free ${formatPaise(own)} — rest set aside in envelopes`;
   }
@@ -355,7 +355,11 @@ function BalanceSummary({
         {incoming && <ArrowDownLeft size={18} className="text-ledger" />}
         {formatPaise(main)}
       </p>
-      <p className="text-xs text-ink-faint">{label}{detail ? ` · ${detail}` : ""}</p>
+      {(label || detail) && (
+        <p className="text-xs text-ink-faint">
+          {[label, detail].filter(Boolean).join(" · ")}
+        </p>
+      )}
     </div>
   );
 }
