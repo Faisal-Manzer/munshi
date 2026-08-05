@@ -613,7 +613,7 @@ export default function BookPage() {
                       </IconBtn>} />
                   </div>
                   {envs.map((env) => (
-                    <div key={env.id} className="pl-6 pr-9 py-1 flex items-baseline justify-between gap-2">
+                    <div key={env.id} className="pl-6 pr-3 py-1 flex items-baseline justify-between gap-2">
                       <button onClick={() => openSheet(env.id)}
                         className="text-xs text-ink-soft text-left hover:text-ledger" title={`${env.name} — details`}>
                         ↳ {env.name}
@@ -669,12 +669,12 @@ export default function BookPage() {
                     const own = -owed - subs.reduce((sum, sc) => sum + subOwed(sc.id), 0);
                     return (
                       <>
-                        <div className="pl-3 pr-9 py-0.5 flex items-baseline justify-between gap-2">
+                        <div className="pl-3 pr-3 py-0.5 flex items-baseline justify-between gap-2">
                           <span className="text-xs text-ink-soft">↳ {c.name} itself</span>
                           <Amount paise={own} className="text-xs text-ink-faint" />
                         </div>
                         {subs.map((sc) => (
-                          <div key={sc.id} className="pl-3 pr-9 py-0.5 flex items-baseline justify-between gap-2">
+                          <div key={sc.id} className="pl-3 pr-3 py-0.5 flex items-baseline justify-between gap-2">
                             <button onClick={() => openSheet(sc.id)}
                               className="text-xs text-ink-soft text-left hover:text-ledger" title={`${sc.name} — details`}>
                               ↳ {sc.name}
@@ -1165,7 +1165,7 @@ function SideBlock({
     <div className="border border-rule bg-paper-raised">
       <div className="flex items-baseline justify-between gap-2 px-3 pt-2 pb-1">
         <p className="text-[10px] uppercase tracking-[0.15em] text-ink-faint">{title}</p>
-        <span className="flex items-baseline gap-1.5 ml-auto">{total}{action}</span>
+        <span className="flex items-center gap-1.5 ml-auto">{action}{total}</span>
       </div>
       <div className="divide-y divide-rule/60 pb-1">{children}</div>
     </div>
@@ -1186,11 +1186,11 @@ function AmountCell({
 }) {
   return (
     <div className="flex items-center gap-1.5 shrink-0">
+      {action}
       <span className="inline-flex items-center gap-0.5">
         {incoming && <ArrowDownLeft size={11} className="text-ledger" />}
         <Amount paise={paise} className={cls} />
       </span>
-      {action}
     </div>
   );
 }
