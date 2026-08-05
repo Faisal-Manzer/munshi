@@ -186,7 +186,7 @@ export default function PlanPage() {
         <Stat label="Card dues landing" v={cardDue} cls={cardDue > 0 ? "text-debit" : ""} />
         <Stat label="Coming back" v={expectedBack} cls="text-ledger" />
         <button onClick={() => setLeftOpen(true)} className="text-left" title="How is this calculated?">
-          <Stat label="Left ⓘ" v={left} cls={left >= 0 ? "text-ledger" : "text-debit"} />
+          <Stat label="Projected savings ⓘ" v={left} cls={left >= 0 ? "text-ledger" : "text-debit"} />
         </button>
       </section>
 
@@ -355,14 +355,14 @@ export default function PlanPage() {
         </p>
       </section>
 
-      <Modal open={leftOpen} title={`How "left" is calculated for ${monthName}`} onClose={() => setLeftOpen(false)}>
+      <Modal open={leftOpen} title={`How projected savings is calculated for ${monthName}`} onClose={() => setLeftOpen(false)}>
         <div className="text-sm space-y-2">
           <CalcLine label="Salary + income templates + one-off income" paise={plannedIn} sign="+" />
           <CalcLine label="Cash committed — recurring paid from banks/cash + budgets + one-off spends" paise={committed} sign="−" />
           <CalcLine label="Card dues landing this month — carry-over bills from the previous cycle" paise={cardDue} sign="−" />
           <CalcLine label="Coming back — expected repayments" paise={expectedBack} sign="+" />
           <div className="border-t border-rule-strong pt-2">
-            <CalcLine label="Left" paise={left} sign="=" bold />
+            <CalcLine label="Projected savings" paise={left} sign="=" bold />
           </div>
           <p className="text-xs text-ink-faint pt-1">
             Assumes this month&apos;s card dues are paid this month. Card swipes

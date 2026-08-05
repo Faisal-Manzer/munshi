@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   accountById,
   cardDueNow,
+  monthActuals,
   cardPlansFor,
   cardUnbilled,
   clampDate,
@@ -443,6 +444,94 @@ describe("projectedLiquidThrough", () => {
 
   it("returns liquidNow untouched when the viewed month is before the start", () => {
     expect(projectedLiquidThrough(simpleCtx, 50000, "2026-09", "2026-08")).toBe(50000);
+  });
+});
+
+// ---- book-month actuals ------------------------------------------------------
+
+describe("monthActuals", () => {
+  const done = { status: "done" as const };
+
+  it("buckets done txns into received / spent / receivedBack", () => {
+    const a = monthActuals(accounts, [
+      txn("2026-08-01", [["salary", -100000], ["bank", 100000]], done),
+      txn("2026-08-02", [["bank", -6000], ["expense", 6000]], done),
+      txn("2026-08-03", [["person", -2000], ["bank", 2000]], done),
+    ], [], 0);
+    expect(a.received).toBe(100000);
+    expect(a.spent).toBe(6000);
+    expect(a.receivedBack).toBe(2000);
+  });
+
+  it("buckets pending txns into incomeToCome / stillToGo / comingBack", () => {
+    const a = monthActuals(accounts, [
+      txn("2026-08-20", [["salary", -50000], ["bank", 50000]]),
+      txn("2026-08-21", [["bank", -7000], ["expense", 7000]]),
+      txn("2026-08-22", [["person", -3000], ["bank", 3000]]),
+    ], [], 0);
+    expect(a.incomeToCome).toBe(50000);
+    expect(a.stillToGo).toBe(7000);
+    expect(a.comingBack).toBe(3000);
+  });
+
+  it("ignores card swipes (they live in cardToPay), internal moves and equity entries", () => {
+    const equity = acc({ id: "equity", kind: "equity", subtype: "opening_balance" });
+    const a = monthActuals([...accounts, equity], [
+      txn("2026-08-02", [["card", -9000], ["expense", 9000]], done),
+      txn("2026-08-03", [["bank", -3000], ["bank2", 3000]], done),
+      txn("2026-08-01", [["bank", 99999], ["equity", -99999]], done),
+    ], [], 12345);
+    expect(a.spent).toBe(0);
+    expect(a.received).toBe(0);
+    expect(a.cardToPay).toBe(12345);
+  });
+
+  it("counts a card-bill payment as spent (its debt reduction shows in cardToPay)", () => {
+    const a = monthActuals(accounts, [
+      txn("2026-08-03", [["bank", -47741], ["card", 47741]], done),
+    ], [], 0);
+    expect(a.spent).toBe(47741);
+  });
+
+  it("adds unposted templates to the remaining side, skips posted ones", () => {
+    const postedTxn = txn("2026-08-03", [["bank", -30000], ["expense", 30000]],
+      { ...done, recurring_template_id: "rentT" });
+    const a = monthActuals(accounts, [postedTxn], [salaryT, rentT, budgetT, internalT], 0);
+    expect(a.incomeToCome).toBe(100000); // salary not yet posted
+    expect(a.spent).toBe(30000); // rent posted → actual
+    expect(a.stillToGo).toBe(15000); // budget yes, internal no, rent already posted
+  });
+
+  it("excludes card-charged templates from stillToGo", () => {
+    const a = monthActuals(accounts, [], [cardEmiT, subcardT], 0);
+    expect(a.stillToGo).toBe(0);
+  });
+
+  it("expects template reimbursements until the person has actually paid", () => {
+    const a1 = monthActuals(accounts, [], [reimburseT], 0);
+    expect(a1.comingBack).toBe(8500);
+    const paid = txn("2026-08-05", [["person", -8500], ["bank", 8500]], done);
+    const a2 = monthActuals(accounts, [paid], [reimburseT], 0);
+    expect(a2.comingBack).toBe(0);
+    expect(a2.receivedBack).toBe(8500);
+  });
+
+  it("projected savings declines as ad-hoc spends are logged", () => {
+    const before = monthActuals(accounts, [], [salaryT, rentT], 20000);
+    const after = monthActuals(accounts, [
+      txn("2026-08-02", [["bank", -6000], ["expense", 6000]], done),
+    ], [salaryT, rentT], 20000);
+    expect(before.projectedSavings).toBe(100000 - 30000 - 20000);
+    expect(after.projectedSavings).toBe(before.projectedSavings - 6000);
+  });
+
+  it("projected savings is unchanged by posting a template at its planned amount", () => {
+    const before = monthActuals(accounts, [], [rentT], 0);
+    const after = monthActuals(accounts, [
+      txn("2026-08-03", [["bank", -30000], ["expense", 30000]],
+        { ...done, recurring_template_id: "rentT" }),
+    ], [rentT], 0);
+    expect(after.projectedSavings).toBe(before.projectedSavings);
   });
 });
 

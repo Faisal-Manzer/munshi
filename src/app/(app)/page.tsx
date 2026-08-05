@@ -20,8 +20,8 @@ import { subtreeBalance, toISODate } from "@/lib/ledger";
 import {
   cardDueNow as cardDueNowOf,
   cardUnbilled as cardUnbilledOf,
-  isIncomeTemplate,
-  isInternalTemplate,
+  liquidNowOf,
+  monthActuals,
   parentCardsOf,
 } from "@/lib/calc";
 import { emiActive, emiInfo, fmtMonth } from "@/lib/emi";
@@ -236,18 +236,6 @@ export default function BookPage() {
   monthRows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   // ---- summary
-  const isIncomeT = (t: RecurringTemplate) => isIncomeTemplate(accounts, t);
-  const isInternalT = (t: RecurringTemplate) => isInternalTemplate(accounts, t);
-  const plannedIn = monthTemplates.filter(isIncomeT).reduce((s, t) => s + t.amount_paise, 0);
-  // cash committed: only templates that take money from bank/cash this month —
-  // card-charged items cost cash later, via the card bill (counted in card owed)
-  const committed = monthTemplates
-    .filter((t) => {
-      if (isIncomeT(t) || isInternalT(t)) return false;
-      return accountById(accounts, t.from_account_id)?.subtype !== "credit_card";
-    })
-    .reduce((s, t) => s + t.amount_paise, 0);
-  const expectedBack = monthTemplates.reduce((s, t) => s + (t.reimburse_amount_paise ?? 0), 0);
   const avoidable = txns
     .filter((t) => t.tag?.toLowerCase().includes("avoid"))
     .reduce((s, t) => {
@@ -263,6 +251,10 @@ export default function BookPage() {
     (s, c) => s + cardDueNow(c) + cardUnbilled(c),
     0
   );
+  // actuals + remaining commitments — a past month has nothing "to come"
+  const bookA = monthActuals(accounts, txns, isPastMonth ? [] : monthTemplates, totalCardOwed);
+  const liquidNow = liquidNowOf(active, balances);
+  const savingsLabel = isPastMonth ? "savings" : "projected savings";
 
   // ---- actions
   async function postVirtual(t: RecurringTemplate, amountStr: string) {
@@ -398,13 +390,15 @@ export default function BookPage() {
             className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft disabled:opacity-30 disabled:hover:bg-transparent">→</button>
         </div>
         <div className="flex gap-5 text-sm flex-wrap">
-          <Headline label="in" paise={plannedIn} cls="text-ledger" />
-          <Headline label="cash committed" paise={committed} />
-          <Headline label="card due" paise={totalDue} cls={totalDue > 0 ? "text-debit" : ""} />
+          <Headline label="received" paise={bookA.received} cls="text-ledger" />
+          <Headline label="spent" paise={bookA.spent} cls={bookA.spent > 0 ? "text-debit" : ""} />
+          {!isPastMonth && <Headline label="still to go" paise={bookA.stillToGo} />}
           <Headline label="card owed" paise={totalCardOwed} cls={totalCardOwed > 0 ? "text-debit" : ""} />
-          <Headline label="coming back" paise={expectedBack} cls="text-ledger" />
+          {!isPastMonth && <Headline label="coming back" paise={bookA.comingBack} cls="text-ledger" />}
+          <Headline label="liquid now" paise={liquidNow} />
           <button onClick={() => setLeftOpen(true)} title="How is this calculated?" className="text-right">
-            <Headline label="left ⓘ" paise={plannedIn - committed - totalCardOwed + expectedBack} cls={plannedIn - committed - totalCardOwed + expectedBack >= 0 ? "text-ledger" : "text-debit"} />
+            <Headline label={`${savingsLabel} ⓘ`} paise={bookA.projectedSavings}
+              cls={bookA.projectedSavings >= 0 ? "text-ledger" : "text-debit"} />
           </button>
           {avoidable > 0 && <Headline label="avoidable" paise={avoidable} cls="text-pending" />}
         </div>
@@ -793,20 +787,31 @@ export default function BookPage() {
         </aside>
       </div>
 
-      <Modal open={leftOpen} title="How 'left' is calculated" onClose={() => setLeftOpen(false)}>
+      <Modal open={leftOpen} title={`How ${savingsLabel} is calculated`}
+        subtitle="What already happened + what is still known to come" onClose={() => setLeftOpen(false)}>
         <div className="text-sm space-y-2">
-          <CalcLine label="Money coming in (salary templates)" paise={plannedIn} sign="+" />
-          <CalcLine label="Cash committed — recurring paid from banks/cash this month (card-charged items excluded: their cash cost is in the card bill)" paise={committed} sign="−" />
-          <CalcLine label="Card owed — full outstanding you'll pay via bills" paise={totalCardOwed} sign="−" />
-          <CalcLine label="Coming back — expected repayments this month" paise={expectedBack} sign="+" />
+          <CalcLine label="Received — income already in" paise={bookA.received} sign="+" />
+          {bookA.incomeToCome > 0 && (
+            <CalcLine label="Still to come — income not yet landed" paise={bookA.incomeToCome} sign="+" />
+          )}
+          <CalcLine label="Spent — cash already out, incl. card bills paid and lends" paise={bookA.spent} sign="−" />
+          {bookA.stillToGo > 0 && (
+            <CalcLine label="Still to go — unposted recurring + planned spends" paise={bookA.stillToGo} sign="−" />
+          )}
+          <CalcLine label="Card owed — outstanding you'll clear via bills (swipes live here, not in Spent)" paise={totalCardOwed} sign="−" />
+          {bookA.receivedBack > 0 && (
+            <CalcLine label="Received back — repayments already in" paise={bookA.receivedBack} sign="+" />
+          )}
+          {bookA.comingBack > 0 && (
+            <CalcLine label="Coming back — repayments still expected" paise={bookA.comingBack} sign="+" />
+          )}
           <div className="border-t border-rule-strong pt-2">
-            <CalcLine label="Left" paise={plannedIn - committed - totalCardOwed + expectedBack} sign="=" bold />
+            <CalcLine label={savingsLabel[0].toUpperCase() + savingsLabel.slice(1)}
+              paise={bookA.projectedSavings} sign="=" bold />
           </div>
           <p className="text-xs text-ink-faint pt-1">
-            This is planning money, not a bank balance: what remains of the
-            month&apos;s income after every known commitment, if you clear all
-            card debt. Ad-hoc spends you log during the month are not
-            subtracted here — watch the account balances for that.
+            This number falls as you log real spends — it is the month&apos;s
+            flow, not a bank balance. Liquid right now: {formatPaise(liquidNow)}.
           </p>
         </div>
       </Modal>

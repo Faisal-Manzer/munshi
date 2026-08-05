@@ -244,6 +244,97 @@ export function monthPlan(ctx: PlanContext, m: string): MonthPlan {
   };
 }
 
+// ---- book-month actuals ------------------------------------------------------
+
+export interface MonthActuals {
+  received: number; // income already in (done txns)
+  incomeToCome: number; // unposted income templates + pending income txns
+  spent: number; // cash already out — done spends, lends, card-bill payments
+  stillToGo: number; // unposted cash templates + pending planned spends
+  cardToPay: number; // card due + unbilled (their cash cost lands via bills)
+  receivedBack: number; // repayments already in
+  comingBack: number; // expected repayments not yet received
+  projectedSavings: number;
+}
+
+/**
+ * The Book's honest headline: actuals for what already happened this month
+ * plus the remaining known commitments. Unlike the Plan's projection, real
+ * ad-hoc spends pull the number down as they are logged.
+ *
+ * Card swipes are excluded from `spent` (they sit in `cardToPay` until the
+ * bill); card-bill payments count as spent AND shrink `cardToPay`, so the
+ * total stays consistent before and after paying a bill.
+ */
+export function monthActuals(
+  accounts: Account[],
+  txns: Txn[],
+  monthTemplates: RecurringTemplate[],
+  cardToPay: number
+): MonthActuals {
+  const a: MonthActuals = {
+    received: 0, incomeToCome: 0, spent: 0, stillToGo: 0,
+    cardToPay, receivedBack: 0, comingBack: 0, projectedSavings: 0,
+  };
+
+  const touchesEquity = (x: Txn) =>
+    x.postings.some((p) => accountById(accounts, p.account_id)?.kind === "equity");
+
+  for (const x of txns) {
+    if (touchesEquity(x)) continue; // opening entries are not this month's flow
+    const kind = oneOffKind(accounts, x);
+    const amt = oneOffAmount(x);
+    if (x.status === "done") {
+      if (kind === "in") a.received += amt;
+      else if (kind === "out") a.spent += amt;
+      else if (kind === "back") a.receivedBack += amt;
+      // "card" swipes live inside cardToPay; "internal" moves nothing
+    } else {
+      if (kind === "in") a.incomeToCome += amt;
+      else if (kind === "out") a.stillToGo += amt;
+      else if (kind === "back") a.comingBack += amt;
+    }
+  }
+
+  // credits already made to each person this month (they paid you back)
+  const personCredits = new Map<string, number>();
+  for (const x of txns) {
+    for (const p of x.postings) {
+      if (p.amount_paise >= 0) continue;
+      if (accountById(accounts, p.account_id)?.subtype === "receivable") {
+        personCredits.set(
+          p.account_id,
+          (personCredits.get(p.account_id) ?? 0) + -p.amount_paise
+        );
+      }
+    }
+  }
+
+  const posted = new Set(
+    txns.map((x) => x.recurring_template_id).filter(Boolean) as string[]
+  );
+  for (const t of monthTemplates) {
+    if (!posted.has(t.id)) {
+      if (isIncomeTemplate(accounts, t)) a.incomeToCome += t.amount_paise;
+      else if (
+        !isInternalTemplate(accounts, t) &&
+        accountById(accounts, t.from_account_id)?.subtype !== "credit_card"
+      ) {
+        a.stillToGo += t.amount_paise;
+      }
+    }
+    if (t.reimburse_account_id && t.reimburse_amount_paise) {
+      const got = personCredits.get(t.reimburse_account_id) ?? 0;
+      if (got < t.reimburse_amount_paise) a.comingBack += t.reimburse_amount_paise;
+    }
+  }
+
+  a.projectedSavings =
+    a.received + a.incomeToCome + a.receivedBack + a.comingBack -
+    a.spent - a.stillToGo - a.cardToPay;
+  return a;
+}
+
 /** Sum of is_liquid account balances. */
 export function liquidNowOf(
   active: Account[],
