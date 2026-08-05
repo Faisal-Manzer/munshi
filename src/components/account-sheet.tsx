@@ -160,7 +160,7 @@ export function AccountSheet({
             </div>
 
             {outstandingOpen && isLoan && account && (
-              <OutstandingForm account={account} balance={bal} supabase={supabase}
+              <OutstandingForm account={account} balance={bal} template={loanTemplate} supabase={supabase}
                 onDone={async () => {
                   setOutstandingOpen(false);
                   await refreshAll();
@@ -346,16 +346,31 @@ function ActionBtn({
 }
 
 function OutstandingForm({
-  account, balance, supabase, onDone, onError,
+  account, balance, template, supabase, onDone, onError,
 }: {
   account: Account;
   balance: number;
+  template: RecurringTemplate | null;
   supabase: ReturnType<typeof useLedger>["supabase"];
   onDone: () => Promise<void>;
   onError: (m: string | null) => void;
 }) {
   const current = displayBalance(account, balance); // positive = remaining owed
-  const [amt, setAmt] = useState(current > 0 ? String(current / 100) : "");
+  // schedule-based estimate: installments left × EMI amount
+  let suggested: number | null = null;
+  let suggestedWhy = "";
+  const e = template ? emiInfo(template, toISODate(new Date()).slice(0, 7)) : null;
+  if (template && e) {
+    const done = Math.min(Math.max(e.idx, 0), e.total);
+    const left = e.total - done;
+    if (left > 0) {
+      suggested = left * template.amount_paise;
+      suggestedWhy = `${left} × ${formatPaise(template.amount_paise)} left by schedule (EMI ${done}/${e.total})`;
+    }
+  }
+  const [amt, setAmt] = useState(
+    current > 0 ? String(current / 100) : suggested ? String(suggested / 100) : ""
+  );
 
   async function submit() {
     const paise = parseRupees(amt);
@@ -383,6 +398,13 @@ function OutstandingForm({
           inputMode="decimal" autoFocus placeholder="e.g. 1,40,436"
           className="w-full border border-rule px-3 py-2 text-sm bg-paper-raised amount" />
       </Field>
+      {suggested !== null && (
+        <button type="button" onClick={() => setAmt(String(suggested / 100))}
+          className="text-xs text-ledger hover:underline text-left">
+          Suggested: {formatPaise(suggested)} — {suggestedWhy}. Adjust if your
+          loan app shows a different figure (interest makes them differ).
+        </button>
+      )}
       <button onClick={submit}
         className="text-sm bg-ledger text-paper-raised px-4 py-1.5 hover:opacity-90">
         Save outstanding
