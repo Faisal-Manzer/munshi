@@ -35,11 +35,15 @@ type HistoryRow = Posting & { transactions: Transaction; running: number };
  * actions, History with running balance, Settings.
  */
 export function AccountSheet({
-  accountId, onDone, onReconcile, onClose,
+  accountId, onDone, onReconcile, onOpenAccount, onAddChild, onClose,
 }: {
   accountId: string | null;
   onDone: () => Promise<unknown>;
   onReconcile: (a: Account) => void;
+  /** Navigate this sheet to another account (envelope, sub-card). */
+  onOpenAccount: (id: string) => void;
+  /** Open the create-account modal scoped to the given NEW_OPTIONS indexes. */
+  onAddChild: (optionIdxs: number[]) => void;
   onClose: () => void;
 }) {
   const { supabase, accounts, balances, cycles, reload } = useLedger();
@@ -136,7 +140,9 @@ export function AccountSheet({
           <p className="p-6 text-sm text-ink-faint">Loading…</p>
         ) : (
           <>
-            <SheetHeader account={account} supabase={supabase} onSaved={refreshAll} onClose={onClose} />
+            <SheetHeader account={account}
+              parent={account.parent_id ? accounts.find((a) => a.id === account.parent_id) ?? null : null}
+              supabase={supabase} onSaved={refreshAll} onOpenParent={onOpenAccount} onClose={onClose} />
             <BalanceSummary account={account} accounts={accounts} active={active}
               balances={balances} cycles={cycles} loanTemplate={loanTemplate} />
 
@@ -156,6 +162,12 @@ export function AccountSheet({
                 <ActionBtn onClick={() => setOutstandingOpen((v) => !v)} primary={bal >= 0}>
                   Set outstanding
                 </ActionBtn>
+              )}
+              {account?.subtype === "bank" && account.parent_id === null && (
+                <ActionBtn onClick={() => onAddChild([1])}>+ Envelope</ActionBtn>
+              )}
+              {isParentCard && (
+                <ActionBtn onClick={() => onAddChild([5])}>+ Sub-card</ActionBtn>
               )}
             </div>
 
@@ -199,7 +211,8 @@ export function AccountSheet({
             )}
 
             {tab === "history" && (
-              <History account={account} rows={rows} childrenAccounts={children} balances={balances} />
+              <History account={account} rows={rows} childrenAccounts={children}
+                balances={balances} onOpenAccount={onOpenAccount} />
             )}
             {tab === "settings" && (
               <Settings account={account} supabase={supabase} onSaved={refreshAll} onClose={onClose} />
@@ -212,11 +225,13 @@ export function AccountSheet({
 }
 
 function SheetHeader({
-  account, supabase, onSaved, onClose,
+  account, parent, supabase, onSaved, onOpenParent, onClose,
 }: {
   account: Account;
+  parent: Account | null;
   supabase: ReturnType<typeof useLedger>["supabase"];
   onSaved: () => Promise<unknown>;
+  onOpenParent: (id: string) => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState(account.name);
@@ -248,6 +263,15 @@ function SheetHeader({
           {SUBTYPE_LABEL[account.subtype]}
           {account.is_liquid && " · liquid"}
           {account.archived && " · archived"}
+          {parent && (
+            <>
+              {" · under "}
+              <button onClick={() => onOpenParent(parent.id)}
+                className="normal-case tracking-normal text-ledger hover:underline">
+                {parent.name}
+              </button>
+            </>
+          )}
         </p>
       </div>
       <button onClick={onClose} aria-label="Close" className="text-ink-faint hover:text-ink p-1">
@@ -476,12 +500,13 @@ function SettleForm({
 }
 
 function History({
-  account, rows, childrenAccounts, balances,
+  account, rows, childrenAccounts, balances, onOpenAccount,
 }: {
   account: Account;
   rows: HistoryRow[] | null;
   childrenAccounts: Account[];
   balances: ReturnType<typeof useLedger>["balances"];
+  onOpenAccount: (id: string) => void;
 }) {
   return (
     <div className="px-5 py-3">
@@ -489,7 +514,11 @@ function History({
         <div className="mb-3 border border-rule divide-y divide-rule/60">
           {childrenAccounts.map((c) => (
             <div key={c.id} className="px-3 py-1.5 flex items-center justify-between gap-2">
-              <p className="text-xs text-ink-soft">↳ {c.name}</p>
+              <button onClick={() => onOpenAccount(c.id)}
+                className="text-xs text-ink-soft text-left hover:text-ledger"
+                title={`${c.name} — details`}>
+                ↳ {c.name}
+              </button>
               <Amount paise={displayBalance(c, balances.get(c.id)?.balance_paise ?? 0)}
                 className="text-xs" />
             </div>
