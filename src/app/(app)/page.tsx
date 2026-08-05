@@ -474,7 +474,7 @@ export default function BookPage() {
 
       {error && <p className="text-sm text-debit border border-debit-soft bg-debit-soft px-3 py-2">{error}</p>}
 
-      <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start xl:flex-1 xl:min-h-0">
+      <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start xl:items-stretch xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]">
         {/* ledger column: filter bar fixed, table scrolls on its own */}
         <div className="min-w-0 space-y-2 xl:h-full xl:flex xl:flex-col">
         <div className="flex items-center gap-2 flex-wrap">
