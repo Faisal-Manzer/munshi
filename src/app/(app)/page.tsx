@@ -25,7 +25,7 @@ import {
   parentCardsOf,
 } from "@/lib/calc";
 import { emiActive, emiInfo, fmtMonth } from "@/lib/emi";
-import { ArrowDownLeft, ArrowLeftRight, HandCoins, Pencil, Plus, RotateCcw, Settings2, Users } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, Pencil, Plus, RotateCcw, Settings2, Users } from "lucide-react";
 import {
   DEFAULT_TAGS,
   type Account,
@@ -707,22 +707,10 @@ export default function BookPage() {
                   {owing.map(({ p, bal }) => (
                     <div key={p.id} className="px-3 py-1.5">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="flex items-center gap-1.5 min-w-0">
-                          <button onClick={() => openSheet(p.id)}
-                            className="text-sm text-left hover:text-ledger truncate" title={`${p.name} — full ledger`}>
-                            {p.name}
-                          </button>
-                          {bal > 0 && (
-                            <IconBtn title={`Record money received from ${p.name}`}
-                              onClick={() => openReceive({
-                                personId: p.id,
-                                amountPaise: bal,
-                                label: `Received from ${p.name}`,
-                              })}>
-                              <HandCoins size={13} />
-                            </IconBtn>
-                          )}
-                        </span>
+                        <button onClick={() => openSheet(p.id)}
+                          className="text-sm text-left hover:text-ledger truncate" title={`${p.name} — full ledger`}>
+                          {p.name}
+                        </button>
                         <AmountCell paise={bal}
                           cls={bal > 0 ? "text-ledger" : "text-debit"}
                           incoming={bal > 0} />
