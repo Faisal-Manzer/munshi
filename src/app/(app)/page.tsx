@@ -443,7 +443,7 @@ export default function BookPage() {
   const cellCls = "px-2 py-1.5";
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 xl:h-[calc(100vh-6.5rem)] xl:flex xl:flex-col xl:overflow-hidden">
       <datalist id="known-tags">
         {knownTags.map((t) => <option key={t} value={t} />)}
       </datalist>
@@ -474,7 +474,7 @@ export default function BookPage() {
 
       {error && <p className="text-sm text-debit border border-debit-soft bg-debit-soft px-3 py-2">{error}</p>}
 
-      <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start xl:h-[calc(100vh-200px)]">
+      <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start xl:flex-1 xl:min-h-0">
         {/* ledger column: filter bar fixed, table scrolls on its own */}
         <div className="min-w-0 space-y-2 xl:h-full xl:flex xl:flex-col">
         <div className="flex items-center gap-2 flex-wrap">
