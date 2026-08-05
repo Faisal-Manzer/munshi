@@ -108,6 +108,10 @@ export default function BookPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [openingOpen, setOpeningOpen] = useState(false);
   const [minMonth, setMinMonth] = useState<string | null>(null);
+  // entries added this sitting stay pinned under the add row until the
+  // month is left — batch entry never has rows jumping into the middle
+  const [justAdded, setJustAdded] = useState<string[]>([]);
+  useEffect(() => setJustAdded([]), [month]);
   // ledger filter/search
   const [query, setQuery] = useState("");
   const [fAcct, setFAcct] = useState("");
@@ -289,6 +293,15 @@ export default function BookPage() {
       return true;
     });
   }
+
+  // pinned just-added rows render first, in the order they were entered
+  const pinnedRows = justAdded
+    .map((id) => monthRows.find((r) => r.kind === "txn" && r.txn.id === id))
+    .filter(Boolean) as TxnRow[];
+  const restRows = monthRows.filter(
+    (r) => !(r.kind === "txn" && justAdded.includes(r.txn.id))
+  );
+  const orderedRows = filtering ? monthRows : [...pinnedRows, ...restRows];
 
   // ---- summary
   const avoidable = txns
@@ -508,7 +521,8 @@ export default function BookPage() {
               </tr>
             </thead>
             <tbody>
-              <QuickAddRow accounts={active} supabase={supabase} onDone={refreshAll} onError={setError} />
+              <QuickAddRow accounts={active} supabase={supabase} onDone={refreshAll}
+                onAdded={(id) => setJustAdded((l) => [...l, id])} onError={setError} />
               {!filtering && openingRows.length > 0 && (
                 <tr className="bg-paper">
                   <td className="px-2 py-1.5 amount text-ink-faint whitespace-nowrap">
@@ -540,7 +554,7 @@ export default function BookPage() {
                   onDelete={() => remove(row)}
                 />
               ))}
-              {monthRows.map((row) => {
+              {orderedRows.map((row) => {
                 if (row.kind === "virtual") {
                   const t = row.template;
                   const overdue = row.date < today;
@@ -635,6 +649,7 @@ export default function BookPage() {
                     accounts={accounts}
                     active={active}
                     today={today}
+                    justAdded={!filtering && justAdded.includes(row.txn.id)}
                     expanded={expanded === row.txn.id}
                     onToggleExpand={() => setExpanded(expanded === row.txn.id ? null : row.txn.id)}
                     onSplit={() => setSplitFor(row)}
@@ -1280,12 +1295,13 @@ function AmountCell({
 }
 
 function TxnEditRow({
-  row, accounts, active, today, expanded, onToggleExpand, onSplit, onCover, onSave, onPatch, onDelete,
+  row, accounts, active, today, justAdded = false, expanded, onToggleExpand, onSplit, onCover, onSave, onPatch, onDelete,
 }: {
   row: TxnRow;
   accounts: Account[];
   active: Account[];
   today: string;
+  justAdded?: boolean;
   expanded: boolean;
   onToggleExpand: () => void;
   onSplit: () => void;
@@ -1360,7 +1376,7 @@ function TxnEditRow({
   );
 
   return (
-    <tr className={pending ? "bg-pending-soft/40" : ""}>
+    <tr className={pending ? "bg-pending-soft/40" : justAdded ? "bg-ledger-soft/40" : ""}>
       <td>
         <DateInput value={t.date} onChange={(iso) => onSave(row, { date: iso })}
           className="text-ink-faint" />
@@ -1438,11 +1454,12 @@ function TxnEditRow({
 }
 
 function QuickAddRow({
-  accounts, supabase, onDone, onError,
+  accounts, supabase, onDone, onAdded, onError,
 }: {
   accounts: Account[];
   supabase: ReturnType<typeof useLedger>["supabase"];
   onDone: () => Promise<unknown>;
+  onAdded: (txnId: string) => void;
   onError: (m: string | null) => void;
 }) {
   const [date, setDate] = useState(() => toISODate(new Date()));
@@ -1485,7 +1502,7 @@ function QuickAddRow({
     const paise = parseRupees(amount);
     if (!desc.trim() || !fromId || !paise || paise <= 0) return;
     try {
-      await createEntry(supabase, {
+      const txn = await createEntry(supabase, {
         date,
         description: desc.trim(),
         status: isPlanned ? "pending" : "done",
@@ -1496,6 +1513,7 @@ function QuickAddRow({
         notes: note.trim() || null,
       });
       onError(null);
+      onAdded(txn.id);
       await onDone();
       setDesc("");
       setAmount("");
