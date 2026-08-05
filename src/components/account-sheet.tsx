@@ -363,9 +363,15 @@ function OutstandingForm({
   if (template && e) {
     const done = Math.min(Math.max(e.idx, 0), e.total);
     const left = e.total - done;
-    if (left > 0) {
-      suggested = left * template.amount_paise;
-      suggestedWhy = `${left} × ${formatPaise(template.amount_paise)} left by schedule (EMI ${done}/${e.total})`;
+    // a split EMI books only your share into the loan — suggest that share,
+    // or the payments themselves will never bring the outstanding to zero
+    const share = template.amount_paise - (template.reimburse_amount_paise ?? 0);
+    if (left > 0 && share > 0) {
+      suggested = left * share;
+      suggestedWhy = template.reimburse_amount_paise
+        ? `your share: ${left} × ${formatPaise(share)} left by schedule (EMI ${done}/${e.total}; ` +
+          `the other ${formatPaise(template.reimburse_amount_paise)}/mo is owed back to you and never touches this loan)`
+        : `${left} × ${formatPaise(share)} left by schedule (EMI ${done}/${e.total})`;
     }
   }
   const [amt, setAmt] = useState(
