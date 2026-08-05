@@ -63,6 +63,21 @@ interface ReceiveTarget {
 }
 type Row = TxnRow | VirtualRow | ReceiveRow;
 
+/**
+ * Numeric search: "520.65" is exact; an integer matches at the precision its
+ * trailing zeros imply — "520" hits 520.00–520.99, "500" hits 500–599.99,
+ * commas and ₹ ignored.
+ */
+function amountMatches(qRaw: string, paise: number): boolean {
+  const cleaned = qRaw.replace(/[₹,\s]/g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return false;
+  const abs = Math.abs(paise);
+  if (cleaned.includes(".")) return abs === Math.round(Number(cleaned) * 100);
+  const zeros = /0*$/.exec(cleaned)![0].length;
+  const unit = Math.pow(10, zeros) * 100; // paise per bucket
+  return Math.floor(abs / unit) === Math.floor((Number(cleaned) * 100) / unit);
+}
+
 function fmtDate(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("en-IN", {
     day: "2-digit",
@@ -259,8 +274,15 @@ export default function BookPage() {
     };
     const rowStatus = (r: Row): string =>
       r.kind === "txn" ? r.txn.status : "projected";
+    const rowAmounts = (r: Row): number[] =>
+      r.kind === "txn"
+        ? [r.amountPaise, ...r.txn.postings.map((p) => p.amount_paise)]
+        : r.kind === "virtual"
+          ? [r.template.amount_paise]
+          : [r.amountPaise];
     monthRows = monthRows.filter((r) => {
-      if (q && !rowText(r).toLowerCase().includes(q)) return false;
+      if (q && !rowText(r).toLowerCase().includes(q) &&
+          !rowAmounts(r).some((a) => amountMatches(q, a))) return false;
       if (fAcct && !rowAccounts(r).includes(fAcct)) return false;
       if (fTag && !(r.kind === "txn" && r.txn.tag === fTag)) return false;
       if (fStatus && rowStatus(r) !== fStatus) return false;
