@@ -649,12 +649,18 @@ export default function BookPage() {
                     <AmountCell paise={-owed}
                       cls={owed > 0 ? "text-debit" : "text-ink-faint"} />
                   </div>
-                  <p className="text-[11px] text-ink-faint">
-                    {due > 0 && <>due {formatPaise(due)} by the {ordinal(c.due_day)} · </>}
-                    {unbilled > 0
-                      ? <>{formatPaise(unbilled)} unbilled — bills on the {ordinal(c.statement_day)}</>
-                      : due > 0 ? null : "nothing owed"}
-                  </p>
+                  {due > 0 && (
+                    <div className="pl-3 pr-3 py-0.5 flex items-baseline justify-between gap-2">
+                      <span className="text-xs text-ink-soft">↳ Due by the {ordinal(c.due_day)}</span>
+                      <Amount paise={-due} className="text-xs text-debit" />
+                    </div>
+                  )}
+                  {unbilled > 0 && (
+                    <div className="pl-3 pr-3 py-0.5 flex items-baseline justify-between gap-2">
+                      <span className="text-xs text-ink-soft">↳ Unbilled · bills the {ordinal(c.statement_day)}</span>
+                      <Amount paise={-unbilled} className="text-xs" />
+                    </div>
+                  )}
                   {recAt && (
                     <p className="text-[11px] text-ink-faint">✓ reconciled {recAt}</p>
                   )}
