@@ -474,9 +474,6 @@ export default function BookPage() {
 
       {error && <p className="text-sm text-debit border border-debit-soft bg-debit-soft px-3 py-2">{error}</p>}
 
-      <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start xl:items-stretch xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]">
-        {/* ledger column: filter bar fixed, table scrolls on its own */}
-        <div className="min-w-0 space-y-2 xl:h-full xl:flex xl:flex-col">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1.5 border border-rule bg-paper-raised px-2 py-1">
             <Search size={13} className="text-ink-faint shrink-0" />
@@ -507,6 +504,10 @@ export default function BookPage() {
             </button>
           )}
         </div>
+
+      <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start xl:items-stretch xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]">
+        {/* ledger column */}
+        <div className="min-w-0 xl:h-full xl:flex xl:flex-col">
         <div className="border border-rule bg-paper-raised overflow-x-auto xl:flex-1 xl:min-h-0 xl:overflow-y-auto">
           <table className="ledger-grid w-full text-sm min-w-[540px] md:min-w-[860px]">
             <thead>
