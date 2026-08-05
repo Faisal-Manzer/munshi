@@ -25,7 +25,7 @@ import {
   parentCardsOf,
 } from "@/lib/calc";
 import { emiActive, emiInfo, fmtMonth } from "@/lib/emi";
-import { ArrowDownLeft, ArrowLeftRight, Pencil, Plus, RotateCcw, Search, Settings2, Users, X } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, ChevronDown, ChevronRight, Pencil, Plus, RotateCcw, Search, Settings2, Users, X } from "lucide-react";
 import {
   DEFAULT_TAGS,
   type Account,
@@ -108,6 +108,15 @@ export default function BookPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [openingOpen, setOpeningOpen] = useState(false);
   const [minMonth, setMinMonth] = useState<string | null>(null);
+  // sidebar tiles with sub-rows are collapsed unless toggled open
+  const [openTiles, setOpenTiles] = useState<Set<string>>(new Set());
+  const toggleTile = (id: string) =>
+    setOpenTiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   // entries added this sitting stay pinned under the add row until the
   // month is left — batch entry never has rows jumping into the middle
   const [justAdded, setJustAdded] = useState<string[]>([]);
@@ -701,23 +710,31 @@ export default function BookPage() {
                 <div key={b.id}>
                   <div className="px-3 py-1.5 flex items-center justify-between gap-2">
                     <div>
-                      <button onClick={() => openSheet(b.id)}
-                        className="text-sm text-left hover:text-ledger" title={`${b.name} — details`}>
-                        {b.name}
-                      </button>
+                      <span className="flex items-center gap-1">
+                        {envs.length > 0 && (
+                          <button onClick={() => toggleTile(b.id)} aria-label={`Toggle ${b.name} breakdown`}
+                            className="text-ink-faint hover:text-ledger -ml-1">
+                            {openTiles.has(b.id) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                          </button>
+                        )}
+                        <button onClick={() => openSheet(b.id)}
+                          className="text-sm text-left hover:text-ledger" title={`${b.name} — details`}>
+                          {b.name}
+                        </button>
+                      </span>
                       {recAt && (
                         <p className="text-[11px] text-ink-faint">✓ reconciled {recAt}</p>
                       )}
                     </div>
                     <AmountCell paise={total} />
                   </div>
-                  {envs.length > 0 && (
+                  {openTiles.has(b.id) && envs.length > 0 && (
                     <div className="pl-6 pr-3 py-1 flex items-baseline justify-between gap-2">
                       <span className="text-xs text-ink-soft">↳ Free</span>
                       <Amount paise={own} className="text-xs" />
                     </div>
                   )}
-                  {envs.map((env) => (
+                  {openTiles.has(b.id) && envs.map((env) => (
                     <div key={env.id} className="pl-6 pr-3 py-1 flex items-baseline justify-between gap-2">
                       <button onClick={() => openSheet(env.id)}
                         className="text-xs text-ink-soft text-left hover:text-ledger" title={`${env.name} — details`}>
@@ -747,14 +764,22 @@ export default function BookPage() {
               return (
                 <div key={c.id} className="px-3 py-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <button onClick={() => openSheet(c.id)}
-                      className="text-sm text-left hover:text-ledger" title={`${c.name} — details`}>
-                      {c.name}
-                    </button>
+                    <span className="flex items-center gap-1">
+                      {subs.length > 0 && (
+                        <button onClick={() => toggleTile(c.id)} aria-label={`Toggle ${c.name} breakdown`}
+                          className="text-ink-faint hover:text-ledger -ml-1">
+                          {openTiles.has(c.id) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                        </button>
+                      )}
+                      <button onClick={() => openSheet(c.id)}
+                        className="text-sm text-left hover:text-ledger" title={`${c.name} — details`}>
+                        {c.name}
+                      </button>
+                    </span>
                     <AmountCell paise={-owed}
                       cls={owed > 0 ? "text-debit" : "text-ink-faint"} />
                   </div>
-                  {subs.length === 0 && (due > 0 || unbilled > 0) && (
+                  {(due > 0 || unbilled > 0) && (
                     <p className="pl-3 py-0.5 text-[11px] text-ink-faint">
                       {due > 0 && <>pay <span className="text-debit">{formatPaise(due)}</span> by the {ordinal(c.due_day)}</>}
                       {due > 0 && unbilled > 0 && " · "}
@@ -764,7 +789,7 @@ export default function BookPage() {
                   {recAt && (
                     <p className="text-[11px] text-ink-faint">✓ reconciled {recAt}</p>
                   )}
-                  {subs.length > 0 && (() => {
+                  {openTiles.has(c.id) && subs.length > 0 && (() => {
                     const subOwed = (id: string) =>
                       (cycles.get(id)?.spends_since_paise ?? 0) +
                       (cycles.get(id)?.billed_paise ?? 0) +
@@ -785,13 +810,6 @@ export default function BookPage() {
                             <Amount paise={subOwed(sc.id)} className="text-xs text-ink-faint" />
                           </div>
                         ))}
-                        {(due > 0 || unbilled > 0) && (
-                          <p className="pl-3 py-0.5 text-[11px] text-ink-faint">
-                            {due > 0 && <>pay <span className="text-debit">{formatPaise(due)}</span> by the {ordinal(c.due_day)}</>}
-                            {due > 0 && unbilled > 0 && " · "}
-                            {unbilled > 0 && <>{formatPaise(unbilled)} bills the {ordinal(c.statement_day)}</>}
-                          </p>
-                        )}
                       </>
                     );
                   })()}
