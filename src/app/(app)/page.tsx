@@ -11,8 +11,8 @@ import { DateInput } from "@/components/date-input";
 import { Field } from "@/components/field";
 import { InputModal, Modal } from "@/components/modal";
 import { AccountModal, BLOCK_OPTIONS } from "@/components/account-modal";
+import { AccountSheet } from "@/components/account-sheet";
 import { CategoriesModal } from "@/components/categories-modal";
-import { PersonModal } from "@/components/person-modal";
 import { TemplateModal } from "@/components/template-form";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { subtreeBalance, toISODate } from "@/lib/ledger";
@@ -82,10 +82,10 @@ export default function BookPage() {
   const [reconFor, setReconFor] = useState<Account | null>(null);
   const [addPersonOpen, setAddPersonOpen] = useState(false);
   const [leftOpen, setLeftOpen] = useState(false);
-  // folded-in tab features: account CRUD, categories, person history, template edit
-  const [acctModal, setAcctModal] = useState<{ editing: Account | null; optionIdxs?: number[] } | null>(null);
+  // folded-in tab features: account CRUD, categories, entity detail, template edit
+  const [createAcct, setCreateAcct] = useState<number[] | null>(null);
   const [catOpen, setCatOpen] = useState(false);
-  const [personView, setPersonView] = useState<Account | null>(null);
+  const [sheetId, setSheetId] = useState<string | null>(null);
   const [tplEdit, setTplEdit] = useState<RecurringTemplate | null>(null);
   const [splitFor, setSplitFor] = useState<TxnRow | null>(null);
   const [coverFor, setCoverFor] = useState<TxnRow | null>(null);
@@ -141,6 +141,24 @@ export default function BookPage() {
     () => Promise.all([load(), reload()]),
     [load, reload]
   );
+
+  // detail sheet is route-addressable: ?account=<id> survives reload/share
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get("account");
+    if (id) setSheetId(id);
+  }, []);
+  const openSheet = useCallback((id: string) => {
+    setSheetId(id);
+    const u = new URL(location.href);
+    u.searchParams.set("account", id);
+    window.history.replaceState(null, "", u);
+  }, []);
+  const closeSheet = useCallback(() => {
+    setSheetId(null);
+    const u = new URL(location.href);
+    u.searchParams.delete("account");
+    window.history.replaceState(null, "", u);
+  }, []);
 
   const knownTags = useMemo(() => {
     const s = new Set(DEFAULT_TAGS);
@@ -575,7 +593,7 @@ export default function BookPage() {
               <IconBtn title="Manage categories & income" onClick={() => setCatOpen(true)}>
                 <Settings2 size={13} />
               </IconBtn>
-              <IconBtn title="Add bank / envelope / cash" onClick={() => setAcctModal({ editing: null, optionIdxs: BLOCK_OPTIONS.accounts })}>
+              <IconBtn title="Add bank / envelope / cash" onClick={() => setCreateAcct(BLOCK_OPTIONS.accounts)}>
                 <Plus size={13} />
               </IconBtn>
             </span>}>
@@ -588,8 +606,8 @@ export default function BookPage() {
                 <div key={b.id}>
                   <div className="px-3 py-1.5 flex items-center justify-between gap-2">
                     <div>
-                      <button onClick={() => setAcctModal({ editing: b })}
-                        className="text-sm text-left hover:text-ledger" title={`Edit ${b.name}`}>
+                      <button onClick={() => openSheet(b.id)}
+                        className="text-sm text-left hover:text-ledger" title={`${b.name} — details`}>
                         {b.name}
                       </button>
                       {envs.length > 0 && (
@@ -610,8 +628,8 @@ export default function BookPage() {
                   </div>
                   {envs.map((env) => (
                     <div key={env.id} className="pl-6 pr-9 py-1 flex items-baseline justify-between gap-2">
-                      <button onClick={() => setAcctModal({ editing: env })}
-                        className="text-xs text-ink-soft text-left hover:text-ledger" title={`Edit ${env.name}`}>
+                      <button onClick={() => openSheet(env.id)}
+                        className="text-xs text-ink-soft text-left hover:text-ledger" title={`${env.name} — details`}>
                         ↳ {env.name}
                       </button>
                       <Amount paise={balances.get(env.id)?.balance_paise ?? 0} className="text-xs" />
@@ -623,7 +641,7 @@ export default function BookPage() {
           </SideBlock>
 
           <SideBlock title="Cards"
-            action={<IconBtn title="Add card / sub-card" onClick={() => setAcctModal({ editing: null, optionIdxs: BLOCK_OPTIONS.cards })}>
+            action={<IconBtn title="Add card / sub-card" onClick={() => setCreateAcct(BLOCK_OPTIONS.cards)}>
               <Plus size={13} />
             </IconBtn>}>
             {parentCards.map((c) => {
@@ -635,8 +653,8 @@ export default function BookPage() {
               return (
                 <div key={c.id} className="px-3 py-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <button onClick={() => setAcctModal({ editing: c })}
-                      className="text-sm text-left hover:text-ledger" title={`Edit ${c.name}`}>
+                    <button onClick={() => openSheet(c.id)}
+                      className="text-sm text-left hover:text-ledger" title={`${c.name} — details`}>
                       {c.name}
                     </button>
                     <div className="flex items-center gap-1.5">
@@ -682,7 +700,7 @@ export default function BookPage() {
                   {owing.map(({ p, bal }) => (
                     <div key={p.id} className="px-3 py-1.5">
                       <div className="flex items-center justify-between gap-2">
-                        <button onClick={() => setPersonView(p)}
+                        <button onClick={() => openSheet(p.id)}
                           className="text-sm text-left hover:text-ledger" title={`${p.name} — full ledger`}>
                           {p.name}
                         </button>
@@ -709,7 +727,7 @@ export default function BookPage() {
                       {settled.map(({ p }, i) => (
                         <span key={p.id}>
                           {i > 0 && ", "}
-                          <button onClick={() => setPersonView(p)}
+                          <button onClick={() => openSheet(p.id)}
                             className="hover:text-ledger underline decoration-dotted"
                             title={`${p.name} — full ledger`}>
                             {p.name}
@@ -727,13 +745,13 @@ export default function BookPage() {
           </SideBlock>
 
           <SideBlock title="Investments"
-            action={<IconBtn title="Add investment" onClick={() => setAcctModal({ editing: null, optionIdxs: BLOCK_OPTIONS.investments })}>
+            action={<IconBtn title="Add investment" onClick={() => setCreateAcct(BLOCK_OPTIONS.investments)}>
               <Plus size={13} />
             </IconBtn>}>
             {active.filter((a) => a.subtype === "investment").map((v) => (
               <div key={v.id} className="px-3 py-1.5 flex items-center justify-between gap-2">
-                <button onClick={() => setAcctModal({ editing: v })}
-                  className="text-sm text-left hover:text-ledger" title={`Edit ${v.name}`}>
+                <button onClick={() => openSheet(v.id)}
+                  className="text-sm text-left hover:text-ledger" title={`${v.name} — details`}>
                   {v.name}
                 </button>
                 <div className="flex items-center gap-1.5">
@@ -747,13 +765,13 @@ export default function BookPage() {
           </SideBlock>
 
           <SideBlock title="Loans"
-            action={<IconBtn title="Add loan" onClick={() => setAcctModal({ editing: null, optionIdxs: BLOCK_OPTIONS.loans })}>
+            action={<IconBtn title="Add loan" onClick={() => setCreateAcct(BLOCK_OPTIONS.loans)}>
               <Plus size={13} />
             </IconBtn>}>
             {active.filter((a) => a.subtype === "loan").map((l) => (
               <div key={l.id} className="px-3 py-1.5 flex items-center justify-between gap-2">
-                <button onClick={() => setAcctModal({ editing: l })}
-                  className="text-sm text-left hover:text-ledger" title={`Edit ${l.name}`}>
+                <button onClick={() => openSheet(l.id)}
+                  className="text-sm text-left hover:text-ledger" title={`${l.name} — details`}>
                   {l.name}
                 </button>
                 <div className="flex items-center gap-1.5">
@@ -854,13 +872,12 @@ export default function BookPage() {
         </div>
       </Modal>
 
-      {acctModal && (
+      {createAcct && (
         <AccountModal
           open
-          editing={acctModal.editing}
-          optionIdxs={acctModal.optionIdxs}
+          optionIdxs={createAcct}
           onDone={refreshAll}
-          onClose={() => setAcctModal(null)}
+          onClose={() => setCreateAcct(null)}
         />
       )}
 
@@ -868,15 +885,19 @@ export default function BookPage() {
         open={catOpen}
         accounts={accounts}
         balances={balances}
-        onEdit={(a) => setAcctModal({ editing: a })}
-        onNew={() => setAcctModal({ editing: null, optionIdxs: [8, 9] })}
+        onEdit={(a) => {
+          setCatOpen(false);
+          openSheet(a.id);
+        }}
+        onNew={() => setCreateAcct([8, 9])}
         onClose={() => setCatOpen(false)}
       />
 
-      <PersonModal
-        person={personView}
-        balancePaise={personView ? balances.get(personView.id)?.balance_paise ?? 0 : 0}
-        onClose={() => setPersonView(null)}
+      <AccountSheet
+        accountId={sheetId}
+        onDone={refreshAll}
+        onReconcile={(a) => setReconFor(a)}
+        onClose={closeSheet}
       />
 
       <TemplateModal

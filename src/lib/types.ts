@@ -45,6 +45,7 @@ export interface Transaction {
   reimburse_account_id: string | null;
   reimburse_amount_paise: number | null;
   notes: string | null;
+  created_at?: string; // set by the DB; used for stable same-day ordering
 }
 
 export interface CardCycle {

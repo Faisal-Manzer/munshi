@@ -37,12 +37,11 @@ export const BLOCK_OPTIONS: Record<string, number[]> = {
   loans: [6],
 };
 
-/** Create a new account (option list scoped by `optionIdxs`) or edit/archive an existing one. */
+/** Create a new account — the option list is scoped by `optionIdxs`. Editing lives in AccountSheet. */
 export function AccountModal({
-  open, editing, optionIdxs, onDone, onClose,
+  open, optionIdxs, onDone, onClose,
 }: {
   open: boolean;
-  editing: Account | null;
   optionIdxs?: number[];
   onDone: () => Promise<unknown>;
   onClose: () => void;
@@ -50,27 +49,23 @@ export function AccountModal({
   const { supabase, accounts } = useLedger();
   const options = (optionIdxs ?? NEW_OPTIONS.map((_, i) => i)).map((i) => NEW_OPTIONS[i]);
   const [optIdx, setOptIdx] = useState(0);
-  const opt = editing ? null : options[Math.min(optIdx, options.length - 1)];
+  const opt = options[Math.min(optIdx, options.length - 1)];
 
-  const [name, setName] = useState(editing?.name ?? "");
-  const [parentId, setParentId] = useState(editing?.parent_id ?? "");
-  const [stmtDay, setStmtDay] = useState(editing?.statement_day ? String(editing.statement_day) : "");
-  const [dueDay, setDueDay] = useState(editing?.due_day ? String(editing.due_day) : "");
-  const [limit, setLimit] = useState(
-    editing?.credit_limit_paise ? String(editing.credit_limit_paise / 100) : ""
-  );
+  const [name, setName] = useState("");
+  const [parentId, setParentId] = useState("");
+  const [stmtDay, setStmtDay] = useState("");
+  const [dueDay, setDueDay] = useState("");
+  const [limit, setLimit] = useState("");
   const [opening, setOpening] = useState("");
-  const [liquid, setLiquid] = useState<boolean | null>(editing ? editing.is_liquid : null);
+  const [liquid, setLiquid] = useState<boolean | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const active = accounts.filter((a) => !a.archived);
   // sensible default for new accounts; the checkbox below overrides
   const effLiquid = liquid ?? (opt ? ["bank", "cash", "envelope"].includes(opt.subtype) : false);
-  const liquidToggleable = editing ? editing.kind === "asset" : opt?.kind === "asset";
-  const isCard = editing
-    ? editing.subtype === "credit_card" && editing.parent_id === null
-    : opt?.subtype === "credit_card" && !opt.needsParent;
+  const liquidToggleable = opt?.kind === "asset";
+  const isCard = opt?.subtype === "credit_card" && !opt.needsParent;
   const parentChoices = opt?.needsParent
     ? active.filter((a) =>
         opt.needsParent === "bank"
@@ -83,27 +78,6 @@ export function AccountModal({
     if (!name.trim()) return;
     setErr(null);
     setSaving(true);
-    if (editing) {
-      const { error } = await supabase
-        .from("accounts")
-        .update({
-          name: name.trim(),
-          statement_day: stmtDay ? Number(stmtDay) : null,
-          due_day: dueDay ? Number(dueDay) : null,
-          credit_limit_paise: parseRupees(limit),
-          is_liquid: effLiquid,
-        })
-        .eq("id", editing.id);
-      setSaving(false);
-      if (error) {
-        setErr(error.message);
-        return;
-      }
-      await onDone();
-      onClose();
-      return;
-    }
-
     if (!opt) return;
     if (opt.needsParent && !parentId) {
       setErr("Pick a parent account.");
@@ -165,41 +139,19 @@ export function AccountModal({
     onClose();
   }
 
-  async function archive() {
-    if (!editing) return;
-    if (!confirm(`Archive ${editing.name}? It stays in history but hides from lists.`)) return;
-    const { error } = await supabase
-      .from("accounts")
-      .update({ archived: true })
-      .eq("id", editing.id);
-    if (error) {
-      setErr(error.message);
-      return;
-    }
-    await onDone();
-    onClose();
-  }
-
   const input = "border border-rule px-2 py-1.5 text-sm bg-paper-raised w-full";
   const canOpen = opt && ["bank", "cash", "loan", "credit_card", "receivable", "investment"].includes(opt.subtype);
 
-  const editingLabel = editing
-    ? NEW_OPTIONS.find((o) => o.subtype === editing.subtype &&
-        (o.needsParent ? editing.parent_id !== null : editing.parent_id === null))?.label ??
-      editing.subtype.replace(/_/g, " ")
-    : null;
-
   return (
-    <Modal open={open} title={editing ? editing.name : "New account"}
-      subtitle={editing ? `${editingLabel} — settings` : undefined} onClose={onClose}>
+    <Modal open={open} title="New account" onClose={onClose}>
       <div className="space-y-3">
-        {!editing && options.length > 1 && (
+        {options.length > 1 && (
           <Field label="Account type">
             <Select chrome value={String(optIdx)} onChange={(v) => setOptIdx(Number(v))}
               groups={[{ options: options.map((o, i) => ({ value: String(i), label: o.label })) }]} />
           </Field>
         )}
-        {!editing && options.length === 1 && (
+        {options.length === 1 && (
           <p className="text-xs text-ink-faint">{options[0].label}</p>
         )}
         <Field label="Name">
@@ -207,7 +159,7 @@ export function AccountModal({
             placeholder={opt?.subtype === "receivable" ? "e.g. Farzan" : "e.g. ICICI, Amazon 1008"} autoFocus
             onKeyDown={(e) => e.key === "Enter" && save()} />
         </Field>
-        {!editing && opt?.needsParent && (
+        {opt?.needsParent && (
           <Field label={opt.needsParent === "bank" ? "Parent bank" : "Parent card"}
             hint={opt.needsParent === "bank"
               ? "The bank this envelope's money sits in"
@@ -232,7 +184,7 @@ export function AccountModal({
             </Field>
           </>
         )}
-        {!editing && canOpen && (
+        {canOpen && (
           <Field
             label={opt?.kind === "liability" ? "Current outstanding (₹)" : "Current balance (₹)"}
             hint="Optional — posts an opening entry so the books match reality">
@@ -249,18 +201,10 @@ export function AccountModal({
           </label>
         )}
         {err && <p className="text-sm text-debit">{err}</p>}
-        <div className="flex gap-2">
-          <button onClick={save} disabled={saving}
-            className="flex-1 bg-ledger text-paper-raised px-3 py-1.5 text-sm disabled:opacity-60">
-            {saving ? "Saving…" : editing ? "Update" : "Add account"}
-          </button>
-          {editing && (
-            <button onClick={archive} disabled={saving}
-              className="border border-debit text-debit px-3 py-1.5 text-sm hover:bg-debit-soft disabled:opacity-60">
-              Archive
-            </button>
-          )}
-        </div>
+        <button onClick={save} disabled={saving}
+          className="w-full bg-ledger text-paper-raised px-3 py-1.5 text-sm disabled:opacity-60">
+          {saving ? "Saving…" : "Add account"}
+        </button>
       </div>
     </Modal>
   );
