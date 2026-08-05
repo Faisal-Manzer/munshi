@@ -649,13 +649,13 @@ export default function BookPage() {
                     <AmountCell paise={-owed}
                       cls={owed > 0 ? "text-debit" : "text-ink-faint"} />
                   </div>
-                  {due > 0 && (
+                  {subs.length === 0 && due > 0 && (
                     <div className="pl-3 py-0.5 flex items-baseline justify-between gap-2">
                       <span className="text-xs text-ink-soft">↳ Due by the {ordinal(c.due_day)}</span>
                       <Amount paise={-due} className="text-xs text-debit" />
                     </div>
                   )}
-                  {unbilled > 0 && (
+                  {subs.length === 0 && unbilled > 0 && (
                     <div className="pl-3 py-0.5 flex items-baseline justify-between gap-2">
                       <span className="text-xs text-ink-soft">↳ Unbilled · bills the {ordinal(c.statement_day)}</span>
                       <Amount paise={-unbilled} className="text-xs" />
@@ -685,6 +685,13 @@ export default function BookPage() {
                             <Amount paise={subOwed(sc.id)} className="text-xs text-ink-faint" />
                           </div>
                         ))}
+                        {(due > 0 || unbilled > 0) && (
+                          <p className="pl-3 py-0.5 text-[11px] text-ink-faint">
+                            {due > 0 && <>pay <span className="text-debit">{formatPaise(due)}</span> by the {ordinal(c.due_day)}</>}
+                            {due > 0 && unbilled > 0 && " · "}
+                            {unbilled > 0 && <>{formatPaise(unbilled)} bills the {ordinal(c.statement_day)}</>}
+                          </p>
+                        )}
                       </>
                     );
                   })()}
