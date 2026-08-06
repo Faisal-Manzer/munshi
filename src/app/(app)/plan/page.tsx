@@ -234,33 +234,22 @@ export default function PlanPage() {
             </button>
           )}
         </div>
-      </div>
-
-      {error && <p className="text-sm text-debit border border-debit-soft bg-debit-soft px-3 py-2">{error}</p>}
-
-      <div className="flex items-end justify-between gap-3 flex-wrap">
-        <p className="text-sm text-ink-soft">
+        <p className="text-sm text-ink-soft text-right">
           Liquid today <span className="amount">{formatPaise(liquidNow)}</span>
-          {" → projected by end of "}{monthName}:{" "}
+          {" → by end of "}{monthName.split(" ")[0]}:{" "}
           <span className={`amount ${projectedLiquid >= 0 ? "text-ledger" : "text-debit"}`}>
             {formatPaise(projectedLiquid)}
           </span>
           <br />
           <span className="text-xs text-ink-faint">liquid accounts + each month&apos;s left from {fmtMonth(nextMonth + "-01")} on; ad-hoc spends not included</span>
         </p>
-        <div className="flex gap-6 text-sm flex-wrap">
-          <Headline label="coming in" paise={plannedIn} cls="text-ledger" incoming={plannedIn > 0} />
-          <Headline label="cash committed" paise={committed} />
-          <Headline label="card dues landing" paise={cardDue > 0 ? -cardDue : 0} cls={cardDue > 0 ? "text-debit" : ""} />
-          <Headline label="coming back" paise={expectedBack} cls="text-ledger" incoming={expectedBack > 0} />
-          <button onClick={() => setLeftOpen(true)} title="How is this calculated?" className="text-right">
-            <Headline label="projected savings ⓘ" paise={left} cls={left >= 0 ? "text-ledger" : "text-debit"} />
-          </button>
-        </div>
       </div>
 
-      {/* filter band — same skeleton as the Book */}
-      <div className="flex items-center gap-2 flex-wrap">
+      {error && <p className="text-sm text-debit border border-debit-soft bg-debit-soft px-3 py-2">{error}</p>}
+
+      {/* filter band — filters left, headline numbers right, same as the Book */}
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1.5 border border-rule bg-paper-raised px-2 py-1">
           <Search size={13} className="text-ink-faint shrink-0" />
           <input value={query} onChange={(e) => setQuery(e.target.value)}
@@ -282,26 +271,27 @@ export default function PlanPage() {
             { value: "recurring", label: "Recurring" },
             { value: "oneoff", label: "One-offs" },
           ] }]} />
-        {filtering && (
-          <button onClick={() => { setQuery(""); setFAcct(""); setFTag(""); setFKind(""); }}
-            className="flex items-center gap-1 text-xs text-ink-soft hover:text-debit">
-            <X size={12} /> {planRows.length} of {totalRows} — clear
+          {filtering && (
+            <button onClick={() => { setQuery(""); setFAcct(""); setFTag(""); setFKind(""); }}
+              className="flex items-center gap-1 text-xs text-ink-soft hover:text-debit">
+              <X size={12} /> {planRows.length} of {totalRows} — clear
+            </button>
+          )}
+        </div>
+        <div className="flex gap-6 text-sm flex-wrap">
+          <Headline label="coming in" paise={plannedIn} cls="text-ledger" incoming={plannedIn > 0} />
+          <Headline label="cash committed" paise={committed} />
+          <Headline label="card dues landing" paise={cardDue > 0 ? -cardDue : 0} cls={cardDue > 0 ? "text-debit" : ""} />
+          <Headline label="coming back" paise={expectedBack} cls="text-ledger" incoming={expectedBack > 0} />
+          <button onClick={() => setLeftOpen(true)} title="How is this calculated?" className="text-right">
+            <Headline label="projected savings ⓘ" paise={left} cls={left >= 0 ? "text-ledger" : "text-debit"} />
           </button>
-        )}
+        </div>
       </div>
 
       <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start">
-        {/* unified plan table */}
+        {/* unified plan table — one-offs and every-month together */}
         <section>
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-xs uppercase tracking-[0.15em] text-ink-faint font-sans font-medium">
-              Planned in {monthName.split(" ")[0]} — one-offs and every-month together
-            </h2>
-            <button onClick={() => { setEditing(null); setFormOpen(true); }}
-              className="flex items-center gap-1 text-xs border border-ledger text-ledger px-2 py-1 hover:bg-ledger-soft">
-              <Plus size={12} /> recurring
-            </button>
-          </div>
           <div className="border border-rule bg-paper-raised overflow-x-auto">
             <table className="ledger-grid w-full text-sm min-w-[540px] md:min-w-[860px]">
               <thead>
@@ -312,7 +302,14 @@ export default function PlanPage() {
                   <th className="px-2 py-2 font-medium w-36 text-right">Amount</th>
                   <th className="px-2 py-2 font-medium w-28">Tag</th>
                   <th className="px-2 py-2 font-medium w-40">Note</th>
-                  <th className="w-16"></th>
+                  <th className="w-24 text-right pr-2 font-medium">
+                    <button onClick={() => { setEditing(null); setFormOpen(true); }}
+                      title="New recurring item — repeats every month"
+                      aria-label="New recurring item"
+                      className="inline-flex items-center gap-0.5 text-ledger hover:bg-ledger-soft px-1 py-0.5 font-medium">
+                      <Plus size={12} /> recurring
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
