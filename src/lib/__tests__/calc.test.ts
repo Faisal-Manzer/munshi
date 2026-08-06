@@ -517,6 +517,29 @@ describe("monthActuals", () => {
     expect(a2.receivedBack).toBe(8500);
   });
 
+  it("counts a txn-level split (no template reimburse) as coming back until repaid", () => {
+    const emiSplit = txn(
+      "2026-08-06",
+      [["bank", -17099], ["expense", 8550], ["person", 8549]],
+      { status: "done", reimburse_account_id: "person", reimburse_amount_paise: 8549 }
+    );
+    expect(monthActuals(accounts, [emiSplit], [], 0).comingBack).toBe(8549);
+    const repaid = txn("2026-08-12", [["person", -8549], ["bank", 8549]], { status: "done" });
+    const a = monthActuals(accounts, [emiSplit, repaid], [], 0);
+    expect(a.comingBack).toBe(0);
+    expect(a.receivedBack).toBe(8549);
+  });
+
+  it("does not double-count a split that a template already declares", () => {
+    const postedSplit = txn(
+      "2026-08-05",
+      [["bank", -17000], ["expense", 8500], ["person", 8500]],
+      { status: "done", recurring_template_id: "reimburseT",
+        reimburse_account_id: "person", reimburse_amount_paise: 8500 }
+    );
+    expect(monthActuals(accounts, [postedSplit], [reimburseT], 0).comingBack).toBe(8500);
+  });
+
   it("projected savings declines as ad-hoc spends are logged", () => {
     const before = monthActuals(accounts, [], [salaryT, rentT], 20000);
     const after = monthActuals(accounts, [

@@ -56,7 +56,8 @@ interface VirtualRow {
 interface ReceiveRow {
   kind: "receive";
   date: string;
-  template: RecurringTemplate;
+  id: string;
+  name: string; // what is being repaid
   personId: string;
   amountPaise: number;
   received: boolean;
@@ -258,13 +259,33 @@ export default function BookPage() {
       rows.push({
         kind: "receive",
         date: `${month}-${String(day).padStart(2, "0")}`,
-        template: t,
+        id: t.id,
+        name: t.name,
         personId: t.reimburse_account_id,
         amountPaise: t.reimburse_amount_paise,
         received:
           (personCredits.get(t.reimburse_account_id) ?? 0) >= t.reimburse_amount_paise,
       });
     }
+  }
+  // splits recorded on entries themselves (e.g. loan EMI split per-txn) are
+  // repayment expectations too — skip ones a template already projects
+  for (const x of isPastMonth ? [] : txns) {
+    if (!x.reimburse_account_id || !x.reimburse_amount_paise) continue;
+    if (
+      x.recurring_template_id &&
+      monthTemplates.some((t) => t.id === x.recurring_template_id && t.reimburse_account_id)
+    ) continue;
+    rows.push({
+      kind: "receive",
+      date: x.date,
+      id: "x" + x.id,
+      name: x.description,
+      personId: x.reimburse_account_id,
+      amountPaise: x.reimburse_amount_paise,
+      received:
+        (personCredits.get(x.reimburse_account_id) ?? 0) >= x.reimburse_amount_paise,
+    });
   }
   // opening/equity entries collapse into a single summary row on top
   const isOpening = (r: Row) =>
@@ -282,14 +303,17 @@ export default function BookPage() {
     const rowAccounts = (r: Row): (string | null)[] =>
       r.kind === "txn"
         ? r.txn.postings.map((p) => p.account_id)
-        : [r.template.from_account_id, r.template.to_account_id, r.template.reimburse_account_id];
+        : r.kind === "virtual"
+          ? [r.template.from_account_id, r.template.to_account_id, r.template.reimburse_account_id]
+          : [r.personId];
     const rowText = (r: Row): string => {
       const names = rowAccounts(r)
         .map((id) => accountById(accounts, id)?.name ?? "")
         .join(" ");
       if (r.kind === "txn")
         return `${r.txn.description} ${r.txn.notes ?? ""} ${r.txn.tag ?? ""} ${names}`;
-      return `${r.template.name} ${r.template.notes ?? ""} ${names}`;
+      if (r.kind === "virtual") return `${r.template.name} ${r.template.notes ?? ""} ${names}`;
+      return `${r.name} ${names}`;
     };
     const rowStatus = (r: Row): string =>
       r.kind === "txn" ? r.txn.status : "projected";
@@ -335,7 +359,9 @@ export default function BookPage() {
     0
   );
   // actuals + remaining commitments — a past month has nothing "to come"
-  const bookA = monthActuals(accounts, txns, isPastMonth ? [] : monthTemplates, totalCardOwed);
+  // to-pay counts only bills payable THIS month — unbilled swipes land on
+  // next month's statement and belong to the Plan
+  const bookA = monthActuals(accounts, txns, isPastMonth ? [] : monthTemplates, totalDue);
   const liquidNow = liquidNowOf(active, balances);
   const outlook = liquidOutlook(bookA, liquidNow);
   const savingsLabel = isPastMonth ? "savings" : "projected savings";
@@ -362,7 +388,7 @@ export default function BookPage() {
       title: "To pay — going out before month end",
       rows: [
         ...parentCards
-          .map((c) => ({ label: `${c.name} — card bill`, paise: -(cardDueNow(c) + cardUnbilled(c)) }))
+          .map((c) => ({ label: `${c.name} — bill due${c.due_day ? ` by the ${ordinal(c.due_day)}` : ""}`, paise: -cardDueNow(c) }))
           .filter((r) => r.paise !== 0),
         ...tplUnposted
           .filter((t) =>
@@ -385,6 +411,15 @@ export default function BookPage() {
           .map((t) => ({
             label: `${accountById(accounts, t.reimburse_account_id)?.name} repays ${t.name}`,
             paise: t.reimburse_amount_paise ?? 0,
+          })),
+        ...(isPastMonth ? [] : txns)
+          .filter((x) => x.reimburse_account_id && x.reimburse_amount_paise &&
+            !(x.recurring_template_id &&
+              monthTemplates.some((t) => t.id === x.recurring_template_id && t.reimburse_account_id)) &&
+            (personCredits.get(x.reimburse_account_id) ?? 0) < x.reimburse_amount_paise)
+          .map((x) => ({
+            label: `${accountById(accounts, x.reimburse_account_id)?.name} repays ${x.description}`,
+            paise: x.reimburse_amount_paise ?? 0,
           })),
         ...pendingByKind("back").map((x) => ({ label: `${x.description} — ${fmtDate(x.date)}`, paise: oneOffAmount(x) })),
       ],
@@ -675,12 +710,12 @@ export default function BookPage() {
                   const person = accountById(accounts, row.personId);
                   const overdue = row.date < today && !row.received;
                   return (
-                    <tr key={"r" + row.template.id}
+                    <tr key={"r" + row.id}
                       className={row.received ? "" : overdue ? "bg-debit-soft/40" : "bg-paper"}>
                       <td className={`${cellCls} amount text-ink-faint whitespace-nowrap`}>{fmtDate(row.date)}</td>
                       <td className={cellCls}>
                         <span className={row.received ? "" : overdue ? "text-debit" : "text-ink-soft"}>
-                          {person?.name} repays {row.template.name}
+                          {person?.name} repays {row.name}
                         </span>
                         {row.received && <span className="text-xs text-ledger"> ✓ received</span>}
                         {overdue && <span className="text-xs text-debit font-medium"> · overdue</span>}
@@ -702,7 +737,7 @@ export default function BookPage() {
                           <button onClick={() => openReceive({
                             personId: row.personId,
                             amountPaise: row.amountPaise,
-                            label: `${accountById(accounts, row.personId)?.name} repays ${row.template.name}`,
+                            label: `${accountById(accounts, row.personId)?.name} repays ${row.name}`,
                           })}
                             className={`text-xs border px-2 py-1 whitespace-nowrap ${overdue ? "border-debit text-debit hover:bg-debit-soft" : "border-ledger text-ledger hover:bg-ledger-soft"}`}>
                             receive
@@ -1021,8 +1056,7 @@ export default function BookPage() {
         subtitle="Liquid today − what must still go out + what is still to come in" onClose={() => setLeftOpen(false)}>
         <div className="text-sm space-y-2">
           <CalcLine label="Liquid now — spendable accounts" paise={outlook.liquidNow} sign="" bold />
-          <CalcLine label={`Card owed — due ${formatPaise(totalDue)} now + ${formatPaise(totalCardOwed - totalDue)} unbilled`}
-            paise={bookA.cardToPay} sign="−" />
+          <CalcLine label="Card bills due this month" paise={bookA.cardToPay} sign="−" />
           {bookA.stillToGo > 0 && (
             <CalcLine label="Commitments to go — unposted recurring + planned spends" paise={bookA.stillToGo} sign="−" />
           )}
@@ -1037,7 +1071,9 @@ export default function BookPage() {
           </div>
           <p className="text-xs text-ink-faint pt-1">
             Everything already received or spent is inside today&apos;s liquid
-            balance — nothing is counted twice. This month so far:
+            balance — nothing is counted twice. Unbilled card swipes
+            ({formatPaise(totalCardOwed - totalDue)}) bill next month and live
+            in the Plan. This month so far:
             received {formatPaise(bookA.received + bookA.receivedBack)},
             spent {formatPaise(bookA.spent)}
             {avoidable > 0 && <>, of which {formatPaise(avoidable)} was tagged avoidable</>}.

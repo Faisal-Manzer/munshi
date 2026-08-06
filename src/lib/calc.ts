@@ -329,6 +329,19 @@ export function monthActuals(
     }
   }
 
+  // splits recorded on the entry itself (no template reimburse behind them)
+  // are expectations too — e.g. a loan EMI split with a friend per-txn
+  for (const x of txns) {
+    if (touchesEquity(x)) continue;
+    if (!x.reimburse_account_id || !x.reimburse_amount_paise) continue;
+    if (
+      x.recurring_template_id &&
+      monthTemplates.some((t) => t.id === x.recurring_template_id && t.reimburse_account_id)
+    ) continue; // already counted via the template
+    const got = personCredits.get(x.reimburse_account_id) ?? 0;
+    if (got < x.reimburse_amount_paise) a.comingBack += x.reimburse_amount_paise;
+  }
+
   a.projectedSavings =
     a.received + a.incomeToCome + a.receivedBack + a.comingBack -
     a.spent - a.stillToGo - a.cardToPay;
