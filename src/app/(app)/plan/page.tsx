@@ -221,7 +221,7 @@ export default function PlanPage() {
 
   // same vertical rhythm as the Book so the two sidebars start level
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 xl:h-[calc(100vh-6.5rem)] xl:flex xl:flex-col xl:overflow-hidden">
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <button onClick={() => shiftMonth(-1)} disabled={month <= nextMonth}
@@ -290,10 +290,10 @@ export default function PlanPage() {
         </div>
       </div>
 
-      <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start">
+      <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start xl:items-stretch xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]">
         {/* unified plan table — one-offs and every-month together */}
-        <section>
-          <div className="no-scrollbar border border-rule bg-paper-raised overflow-x-auto">
+        <section className="min-w-0 xl:h-full xl:flex xl:flex-col">
+          <div className="no-scrollbar border border-rule bg-paper-raised overflow-x-auto xl:flex-1 xl:min-h-0 xl:overflow-y-auto">
             <table className="ledger-grid w-full text-sm min-w-[540px] md:min-w-[860px]">
               <thead>
                 <tr className="text-left text-xs text-ink-faint">
@@ -394,7 +394,7 @@ export default function PlanPage() {
         </section>
 
         {/* sidebar — same placement as the Book */}
-        <aside className="space-y-2">
+        <aside className="no-scrollbar space-y-2 xl:h-full xl:overflow-y-auto">
           <SideBlock title={`Card dues — ${monthName.split(" ")[0]}`}
             total={<Amount paise={cardDue > 0 ? -cardDue : 0}
               className={`px-3 ${cardDue > 0 ? "text-debit" : "text-ink-faint"}`} />}>
