@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLedger } from "@/lib/use-ledger";
 import { Amount } from "@/components/amount";
 import { Field } from "@/components/field";
@@ -129,7 +130,7 @@ export function AccountSheet({
     : false;
   const children = account ? active.filter((a) => a.parent_id === account.id) : [];
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end"
       onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-backdrop absolute inset-0 -z-10 pointer-events-none"
@@ -221,7 +222,8 @@ export function AccountSheet({
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

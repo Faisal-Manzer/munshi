@@ -86,7 +86,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .page-enter { animation: rise 0.18s ease-out both; }
+  /* backwards fill only — a retained transform would trap fixed overlays */
+  .page-enter { animation: rise 0.18s ease-out backwards; }
   .modal-backdrop { animation: fade-in 0.15s ease-out both; }
   .modal-panel { animation: pop 0.18s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
   .sheet-panel { animation: slide-in 0.22s cubic-bezier(0.2, 0.8, 0.3, 1) both; }

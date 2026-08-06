@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export function Modal({
   open, title, subtitle, onClose, children, wide,
@@ -21,7 +22,8 @@ export function Modal({
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
+  // portal to <body>: animated/transformed ancestors must never clip the overlay
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-backdrop absolute inset-0 -z-10 pointer-events-none"
@@ -33,7 +35,8 @@ export function Modal({
         </div>
         <div className="p-4">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
