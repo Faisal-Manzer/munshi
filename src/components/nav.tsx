@@ -147,7 +147,7 @@ function LedgerSwitcher({ email }: { email: string }) {
         <ChevronDown size={13} className="text-ink-faint" />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-40 min-w-[14rem] border border-rule-strong bg-paper-raised shadow-lg py-1">
+        <div className="menu-pop absolute left-0 top-full mt-1 z-40 min-w-[14rem] border border-rule-strong bg-paper-raised shadow-lg py-1">
           {ledgers.map((l) => (
             <button
               key={l.id}

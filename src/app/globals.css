@@ -67,6 +67,26 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   outline-offset: 1px;
 }
 
+/* Motion — quick and quiet; entrances only, nothing bouncy */
+@keyframes fade-in { from { opacity: 0 } }
+@keyframes rise { from { opacity: 0; transform: translateY(5px) } }
+@keyframes pop { from { opacity: 0; transform: scale(0.97) } }
+@keyframes slide-in { from { opacity: 0; transform: translateX(28px) } }
+@keyframes row-flash { 0% { background-color: var(--ledger-soft) } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .page-enter { animation: rise 0.18s ease-out both; }
+  .modal-backdrop { animation: fade-in 0.15s ease-out both; }
+  .modal-panel { animation: pop 0.18s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+  .sheet-panel { animation: slide-in 0.22s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+  .menu-pop { animation: pop 0.12s ease-out both; transform-origin: top left; }
+  tr.just-added td { animation: row-flash 0.9s ease-out; }
+  button, a { transition: color 0.15s ease, background-color 0.15s ease,
+    border-color 0.15s ease, opacity 0.15s ease; }
+  input, select, textarea { transition: border-color 0.15s ease, background-color 0.15s ease; }
+  .ledger-grid tbody td { transition: background-color 0.15s ease; }
+}
+
 /* Scroll without a visible bar — panes still scroll by wheel/trackpad */
 .no-scrollbar {
   scrollbar-width: none;       /* Firefox */

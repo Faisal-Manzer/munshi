@@ -130,10 +130,10 @@ export function AccountSheet({
   const children = account ? active.filter((a) => a.parent_id === account.id) : [];
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end"
+    <div className="modal-backdrop fixed inset-0 z-50 flex justify-end"
       style={{ background: "rgba(28,36,32,0.35)" }} onMouseDown={onClose}>
       <div
-        className="no-scrollbar w-full max-w-[540px] h-full overflow-y-auto border-l border-rule-strong bg-paper-raised shadow-xl"
+        className="sheet-panel no-scrollbar w-full max-w-[540px] h-full overflow-y-auto border-l border-rule-strong bg-paper-raised shadow-xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
         {!account ? (
