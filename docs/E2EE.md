@@ -170,6 +170,40 @@ Budget's: the MCP server embeds the app's own sync client.
 - The AI chat inside the web app uses the same `@munshi/core` mutation API —
   one brain, three callers (UI, in-app AI, MCP).
 
+### 6.1 Headless local MCP (no frontend needed)
+
+The app never has to open. One-time `npx @munshi/mcp login`: Supabase auth
+(device-code or one browser popup) + passphrase prompt in the terminal →
+masterKey derived → device-wrapped copy stored in the OS keychain (macOS
+Keychain — optionally Touch-ID-gated per access — / Windows DPAPI /
+libsecret). Every subsequent run: Claude spawns the stdio server, key comes
+from the keychain, encrypted ops sync from Supabase, local replica
+materializes, tools serve. URL-elicitation unlock via the web app is only
+the fallback when the keychain is empty. Same shape as Actual Budget's MCP
+and `bw serve`.
+
+### 6.2 Remote MCP for claude.ai (web)
+
+claude.ai cannot spawn local processes — it needs a hosted Streamable-HTTP
+MCP server with OAuth. A hosted server plus strict E2EE is a genuine
+contradiction: no key, no data. Two shipped answers, one deferred:
+
+1. **Per-ledger "cloud AI access" opt-in (default path)**: the remote MCP
+   service has its own keypair; toggling the setting seals that one
+   ledgerKey to the service's public key — mechanically identical to adding
+   a member. The service decrypts in memory only, serves the same tool set
+   (two-phase writes included), OAuth 2.1 per user. Revoke = delete wrapped
+   key + forward key rotation. **That ledger is then readable by the
+   service** — the UI badges it plainly ("cloud AI can read this ledger");
+   un-toggled ledgers remain fully E2EE. This is Vision §4 tier 2 made a
+   standing per-ledger consent instead of per-conversation.
+2. **Self-hosted bridge (power users, E2EE intact)**: `munshi-mcp serve
+   --http` on the user's own always-on machine, exposed via a tunnel
+   (Cloudflare Tunnel or similar) with OAuth bearer + loopback-origin
+   token; claude.ai connects to the user's endpoint, plaintext never
+   touches Munshi infra.
+3. Attested enclave — deferred (see §10).
+
 ## 7. Analytics under E2EE
 
 All ledger math already lives in pure TS (calc.ts) — it moves wholly
