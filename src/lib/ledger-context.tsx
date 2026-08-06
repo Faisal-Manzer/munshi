@@ -14,6 +14,7 @@ import type { Ledger } from "@/lib/types";
 const ACTIVE_KEY = "munshi-active-ledger";
 
 interface LedgerContextValue {
+  error: string | null;
   ledgers: Ledger[];
   ledgerId: string | null; // null until the list has loaded
   ledger: Ledger | null;
@@ -30,6 +31,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
   const supabase = useMemo(() => createClient(), []);
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const [ledgerId, setLedgerId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
@@ -56,7 +58,9 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   useEffect(() => {
-    load().catch(() => {}); // page-level hooks surface load errors
+    load()
+      .then(() => setError(null))
+      .catch((e) => setError(e instanceof Error ? e.message : "ledgers failed to load"));
   }, [load]);
 
   const switchLedger = useCallback((id: string) => {
@@ -90,6 +94,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
+      error,
       ledgers,
       ledgerId,
       ledger: ledgers.find((l) => l.id === ledgerId) ?? null,
@@ -98,7 +103,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       renameLedger,
       reloadLedgers: load,
     }),
-    [ledgers, ledgerId, switchLedger, createLedger, renameLedger, load]
+    [error, ledgers, ledgerId, switchLedger, createLedger, renameLedger, load]
   );
 
   return <LedgerContext.Provider value={value}>{children}</LedgerContext.Provider>;

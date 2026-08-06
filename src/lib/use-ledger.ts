@@ -8,7 +8,7 @@ import type { Account, AccountBalance, CardCycle } from "@/lib/types";
 /** Loads the active ledger's account tree + balances; shared by every page. */
 export function useLedger() {
   const supabase = useMemo(() => createClient(), []);
-  const { ledgerId, ledger, ledgers, switchLedger } = useActiveLedger();
+  const { ledgerId, ledger, ledgers, switchLedger, error: ledgerError } = useActiveLedger();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [balances, setBalances] = useState<Map<string, AccountBalance>>(
     new Map()
@@ -66,7 +66,7 @@ export function useLedger() {
     balances,
     cycles,
     loading,
-    error,
+    error: error ?? ledgerError,
     reload,
   };
 }
