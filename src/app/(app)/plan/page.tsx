@@ -219,8 +219,9 @@ export default function PlanPage() {
   const monthName = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1)
     .toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 
+  // same vertical rhythm as the Book so the two sidebars start level
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <button onClick={() => shiftMonth(-1)} disabled={month <= nextMonth}
