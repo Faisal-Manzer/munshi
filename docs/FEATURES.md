@@ -26,7 +26,7 @@ formula, every screen element, and the data model underneath.
 12. [Envelopes & budgets](#12-envelopes--budgets)
 13. [Liquidity](#13-liquidity)
 14. [Reconciliation](#14-reconciliation)
-15. [Shared ledger (multiple emails)](#15-shared-ledger-multiple-emails)
+15. [Multiple & shared ledgers](#15-multiple--shared-ledgers)
 16. [Authentication](#16-authentication)
 17. [UI component system](#17-ui-component-system)
 18. [Formatting & display rules](#18-formatting--display-rules)
@@ -98,9 +98,10 @@ possible inside one batch, but nothing unbalanced can ever be committed.
 
 Monthly items — see [Recurring templates](#6-recurring-templates).
 
-### `ledger_members`
+### `ledgers` and `ledger_memberships`
 
-Emails sharing one ledger — see [Shared ledger](#15-shared-ledger-multiple-emails).
+One login, many books. Every data row carries a `ledger_id`; membership and
+roles are per ledger — see [Multiple & shared ledgers](#15-multiple--shared-ledgers).
 
 ### Views
 
@@ -554,24 +555,34 @@ balance — `+₹120.00 vs bank` on accounts, `₹450.00 unlogged on card` /
 `over-logged` on cards. It never auto-corrects; the gap is a to-do, not an
 adjustment.
 
-## 15. Shared ledger (multiple emails)
+## 15. Multiple & shared ledgers
 
-Multiple Google accounts can share one ledger:
+One account, many books (VISION §2–§3):
 
-- `ledger_members` holds emails. Any row owned by a member is visible and
-  editable by every member (RLS policies call a security-definer
-  `is_shared_row`; both the row's owner and the caller must be members).
-  Non-members keep a fully private per-user ledger.
-- The table itself has **no policies** — clients can't read or write it
-  directly. Three security-definer RPCs are the only door, and each
-  requires the caller to already be a member: `ledger_members_list()`,
-  `ledger_member_add(email)`, `ledger_member_remove(email)` (you can't
-  remove yourself).
-- UI: click your email in the nav → **Ledger members** modal: list, add,
-  remove (with confirm). A non-member sees a note that sharing is
-  invite-only.
-- Bootstrap: the first member is seeded by SQL
-  (`insert into ledger_members (email) values ('you@example.com');`).
+- **`ledgers`** — each is a fully isolated set of accounts, transactions,
+  templates, and members. Every data row (`accounts`, `transactions`,
+  `postings`, `recurring_templates`) carries a non-null `ledger_id`.
+  Postings inherit their transaction's ledger and child accounts (envelopes,
+  sub-cards) inherit the parent's — both via `before insert` triggers.
+- **`ledger_memberships`** — `(ledger_id, email, role)` with roles
+  `owner` / `editor` / `viewer`. Membership is by email so someone can be
+  invited before their first sign-in.
+- **RLS**: `is_ledger_member(ledger_id)` gates all reads;
+  `can_write_ledger` (owner or editor) gates writes — a viewer is read-only
+  at the database level. `ledger_memberships` itself has **no policies**;
+  security-definer RPCs are the only door: `ledger_create(name)` (caller
+  becomes owner), `ledger_members_list(l)`, `ledger_member_add(l, email,
+  role)` and `ledger_member_remove(l, email)` (owner-only; you can't remove
+  yourself).
+- **UI**: the nav shows a **ledger switcher** (book icon) — switch, rename,
+  or create a ledger; the active ledger id persists in
+  localStorage (`munshi-active-ledger`) and every screen is scoped to it.
+  Click your email → **Members** modal for the active ledger: list with
+  roles, add (owners pick a role), remove (with confirm).
+- Migration 008 folds the old email-list model in: the shared group becomes
+  one "Personal" ledger (members as owners); any other user gets a private
+  ledger of their own. A brand-new user's first sign-in auto-creates
+  "Personal" via `ledger_create`.
 
 ## 16. Authentication
 
