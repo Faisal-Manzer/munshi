@@ -781,9 +781,9 @@ export default function BookPage() {
                   </div>
                   {(due > 0 || unbilled > 0) && (
                     <p className="pl-3 py-0.5 text-[11px] text-ink-faint">
-                      {due > 0 && <>pay <span className="text-debit">{formatPaise(due)}</span> by the {ordinal(c.due_day)}</>}
+                      {due > 0 && <>pay <span className="amount text-debit">{formatPaise(due)}</span> by the {ordinal(c.due_day)}</>}
                       {due > 0 && unbilled > 0 && " · "}
-                      {unbilled > 0 && <>{formatPaise(unbilled)} bills the {ordinal(c.statement_day)}</>}
+                      {unbilled > 0 && <><span className="amount">{formatPaise(unbilled)}</span> bills the {ordinal(c.statement_day)}</>}
                     </p>
                   )}
                   {recAt && (
@@ -1395,7 +1395,7 @@ function TxnEditRow({
   );
 
   return (
-    <tr className={pending ? "bg-pending-soft/40" : justAdded ? "bg-ledger-soft/40" : ""}>
+    <tr className={`${justAdded ? "just-added" : ""} ${pending ? "bg-pending-soft/40" : justAdded ? "bg-ledger-soft/40" : ""}`}>
       <td>
         <DateInput value={t.date} onChange={(iso) => onSave(row, { date: iso })}
           className="text-ink-faint" />
@@ -1546,7 +1546,7 @@ function QuickAddRow({
 
   return (
     <>
-      <tr className="bg-ledger-soft/50" onKeyDown={(e) => e.key === "Enter" && submit()}>
+      <tr className="quick-add bg-ledger-soft/50" onKeyDown={(e) => e.key === "Enter" && submit()}>
         <td>
           <DateInput value={date} onChange={setDate} />
         </td>

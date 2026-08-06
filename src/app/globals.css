@@ -112,6 +112,22 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   }
 }
 
+/* Privacy mode: amounts blur; the one you point at reveals; the rows you
+   are actively entering (quick-add + just-added) stay readable */
+.privacy .amount {
+  filter: blur(5px);
+  transition: filter 120ms;
+}
+.privacy .amount:hover,
+.privacy .amount:focus,
+.privacy .amount:focus-within {
+  filter: none;
+}
+.privacy tr.quick-add .amount,
+.privacy tr.just-added .amount {
+  filter: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Modal } from "@/components/modal";
-import { X } from "lucide-react";
+import { Eye, EyeOff, X } from "lucide-react";
 
 const LINKS = [
   { href: "/", label: "Book" },
@@ -16,6 +16,20 @@ export function Nav({ email }: { email: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const [membersOpen, setMembersOpen] = useState(false);
+  const [privacy, setPrivacy] = useState(false);
+
+  useEffect(() => {
+    const on = localStorage.getItem("munshi-privacy") === "1";
+    setPrivacy(on);
+    document.documentElement.classList.toggle("privacy", on);
+  }, []);
+
+  function togglePrivacy() {
+    const on = !privacy;
+    setPrivacy(on);
+    document.documentElement.classList.toggle("privacy", on);
+    localStorage.setItem("munshi-privacy", on ? "1" : "0");
+  }
 
   async function signOut() {
     await createClient().auth.signOut();
@@ -49,6 +63,14 @@ export function Nav({ email }: { email: string }) {
           })}
         </nav>
         <div className="ml-auto flex items-center gap-3">
+          <button
+            onClick={togglePrivacy}
+            title={privacy ? "Show amounts" : "Privacy — blur amounts (hover reveals one)"}
+            aria-label={privacy ? "Show amounts" : "Blur amounts"}
+            className={privacy ? "text-ledger" : "text-ink-faint hover:text-ink"}
+          >
+            {privacy ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
           <button
             onClick={() => setMembersOpen(true)}
             className="hidden sm:block text-xs text-ink-faint hover:text-ledger"
