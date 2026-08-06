@@ -4,7 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLedger, accountById } from "@/lib/use-ledger";
 import { Amount } from "@/components/amount";
 import { Headline } from "@/components/headline";
-import { AccountSelect } from "@/components/account-select";
+import { SideBlock } from "@/components/side-block";
+import { Select } from "@/components/select";
+import { amountMatches } from "@/lib/search";
+import { AccountSelect, accountGroups } from "@/components/account-select";
 import { Modal } from "@/components/modal";
 import { TemplateModal } from "@/components/template-form";
 import { TitleInput, useTitleSuggestions } from "@/components/title-input";
@@ -24,7 +27,7 @@ import {
   type PlanContext,
   type Txn,
 } from "@/lib/calc";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Search, X } from "lucide-react";
 import type { Account, RecurringTemplate } from "@/lib/types";
 
 function fmtDate(iso: string) {
@@ -43,6 +46,10 @@ export default function PlanPage() {
   const [editing, setEditing] = useState<RecurringTemplate | null>(null);
   const [leftOpen, setLeftOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [fAcct, setFAcct] = useState("");
+  const [fTag, setFTag] = useState("");
+  const [fKind, setFKind] = useState("");
 
   const today = new Date();
   // plan is for NEXT month by default — this month is assumed to resolve itself
@@ -157,6 +164,49 @@ export default function PlanPage() {
     await Promise.all([load(), reload()]);
   }
 
+  // ---- filters over the unified plan table (display only; math sees all)
+  const knownTags = useMemo(
+    () => [...new Set(allOneOffs.map((x) => x.tag).filter(Boolean))] as string[],
+    [allOneOffs]
+  );
+  const filtering = !!(query.trim() || fAcct || fTag || fKind);
+
+  function tplMatches(t: RecurringTemplate): boolean {
+    if (fKind === "oneoff") return false;
+    if (fTag) return false; // recurring items carry no tag
+    if (fAcct && ![t.from_account_id, t.to_account_id, t.reimburse_account_id].includes(fAcct)) return false;
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    if (amountMatches(q, t.amount_paise)) return true;
+    return [
+      t.name, t.notes ?? "",
+      accountById(accounts, t.from_account_id)?.name ?? "",
+      accountById(accounts, t.to_account_id)?.name ?? "",
+    ].join(" ").toLowerCase().includes(q);
+  }
+
+  function oneOffMatches(x: Txn): boolean {
+    if (fKind === "recurring") return false;
+    if (fTag && (x.tag ?? "") !== fTag) return false;
+    if (fAcct && !x.postings.some((p) => p.account_id === fAcct)) return false;
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    if (amountMatches(q, oneOffAmount(x))) return true;
+    const names = x.postings.map((p) => accountById(accounts, p.account_id)?.name ?? "").join(" ");
+    return `${x.description} ${x.notes ?? ""} ${x.tag ?? ""} ${names}`.toLowerCase().includes(q);
+  }
+
+  // one table: one-offs and recurring interleaved by day of month
+  const planRows = [
+    ...oneOffs.filter(oneOffMatches).map((x) => ({
+      day: Number(x.date.slice(8, 10)), oneoff: x as Txn | null, tpl: null as RecurringTemplate | null,
+    })),
+    ...templates.filter(tplMatches).map((t) => ({
+      day: t.day_of_month, oneoff: null as Txn | null, tpl: t as RecurringTemplate | null,
+    })),
+  ].sort((a, b) => a.day - b.day || (a.oneoff ? 1 : 0) - (b.oneoff ? 1 : 0));
+  const totalRows = oneOffs.length + templates.length;
+
   function shiftMonth(delta: number) {
     const [y, m] = month.split("-").map(Number);
     const next = toISODate(new Date(y, m - 1 + delta, 1)).slice(0, 7);
@@ -209,161 +259,178 @@ export default function PlanPage() {
         </div>
       </div>
 
-      <section>
-        <h2 className="text-xs uppercase tracking-[0.15em] text-ink-faint mb-2 font-sans font-medium">
-          Card dues in {monthName.split(" ")[0]}
-        </h2>
-        <div className="border border-rule bg-paper-raised divide-y divide-rule">
-          {cardPlans.map((cp) => (
-            <div key={cp.card.id} className="px-4 py-2">
-              <div className="flex items-center gap-3">
-                <p className="text-sm flex-1">
-                  {cp.card.name}
-                  <span className="text-xs text-ink-faint">
-                    {" "}· bills {fmtDate(toISODate(cp.stmtDate))}, due {fmtDate(toISODate(cp.dueDate))}
-                  </span>
-                </p>
-                <Amount paise={cp.total} className={cp.total > 0 ? "text-debit" : "text-ink-faint"} />
-              </div>
-              <p className="text-[11px] text-ink-faint">
-                {cp.estimateOnly
-                  ? "estimate — recurring card charges only, cycle hasn't started"
-                  : [
-                      cp.unbilledNow > 0 ? `${formatPaise(cp.unbilledNow)} already swiped` : null,
-                      cp.recurring > 0 ? `${formatPaise(cp.recurring)} recurring to come` : null,
-                      cp.planned > 0 ? `${formatPaise(cp.planned)} planned one-offs` : null,
-                    ].filter(Boolean).join(" + ") || "nothing yet — ad-hoc swipes will add up here"}
-              </p>
-            </div>
-          ))}
-          {cardPlans.length === 0 && (
-            <p className="text-sm text-ink-faint p-4">No card statement lands a due in this month.</p>
+      {/* filter band — same skeleton as the Book */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 border border-rule bg-paper-raised px-2 py-1">
+          <Search size={13} className="text-ink-faint shrink-0" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search plan…"
+            className="text-sm bg-transparent w-44" />
+          {query && (
+            <button onClick={() => setQuery("")} aria-label="Clear search"
+              className="text-ink-faint hover:text-ink"><X size={12} /></button>
           )}
         </div>
-        <p className="text-xs text-ink-faint mt-2">
-          Assumes this month&apos;s dues are paid this month. These are the bills that carry over.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-xs uppercase tracking-[0.15em] text-ink-faint mb-2 font-sans font-medium">
-          One-offs — only in {monthName.split(" ")[0]}
-        </h2>
-        <div className="border border-rule bg-paper-raised overflow-x-auto">
-          <table className="ledger-grid w-full text-sm min-w-[540px] md:min-w-[860px]">
-            <thead>
-              <tr className="text-left text-xs text-ink-faint">
-                <th className="px-2 py-2 font-medium w-32">Date</th>
-                <th className="px-2 py-2 font-medium">Title</th>
-                <th className="px-2 py-2 font-medium w-56">Account</th>
-                <th className="px-2 py-2 font-medium w-36 text-right">Amount</th>
-                <th className="px-2 py-2 font-medium w-28">Tag</th>
-                <th className="px-2 py-2 font-medium w-40">Note</th>
-                <th className="w-16"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <OneOffAddRow month={month} accounts={active} onCreate={addOneOff} supabase={supabase} />
-              {oneOffs.map((x) => (
-                <OneOffRow key={x.id + x.date + oneOffAmount(x)} txn={x} accounts={accounts}
-                  active={active} amountPaise={oneOffAmount(x)}
-                  onPatch={patchOneOff} onDelete={() => removeOneOff(x)} />
-              ))}
-            </tbody>
-          </table>
-          {oneOffs.length === 0 && (
-            <p className="text-sm text-ink-faint p-3">
-              Nothing planned yet — a premium, a trip, a bonus. Added items show
-              up in the Book as pending when the month arrives.
-            </p>
-          )}
-        </div>
-      </section>
-
-      <section>
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-xs uppercase tracking-[0.15em] text-ink-faint font-sans font-medium">
-            Every month
-          </h2>
-          <button onClick={() => { setEditing(null); setFormOpen(true); }}
-            className="flex items-center gap-1 text-xs border border-ledger text-ledger px-2 py-1 hover:bg-ledger-soft">
-            <Plus size={12} /> recurring
+        <Select chrome value={fAcct} onChange={setFAcct} placeholder="Any account" className="w-44"
+          groups={[{ options: [{ value: "", label: "Any account" }] }, ...accountGroups(active)]} />
+        <Select chrome value={fTag} onChange={setFTag} placeholder="Any tag" className="w-32"
+          groups={[{ options: [{ value: "", label: "Any tag" },
+            ...knownTags.map((t) => ({ value: t, label: t }))] }]} />
+        <Select chrome value={fKind} onChange={setFKind} placeholder="Any kind" className="w-32"
+          groups={[{ options: [
+            { value: "", label: "Any kind" },
+            { value: "recurring", label: "Recurring" },
+            { value: "oneoff", label: "One-offs" },
+          ] }]} />
+        {filtering && (
+          <button onClick={() => { setQuery(""); setFAcct(""); setFTag(""); setFKind(""); }}
+            className="flex items-center gap-1 text-xs text-ink-soft hover:text-debit">
+            <X size={12} /> {planRows.length} of {totalRows} — clear
           </button>
-        </div>
-        <div className="border border-rule bg-paper-raised overflow-x-auto">
-          <table className="ledger-grid w-full text-sm min-w-[540px] md:min-w-[860px]">
-            <thead>
-              <tr className="text-left text-xs text-ink-faint">
-                <th className="px-2 py-2 font-medium w-32">Date</th>
-                <th className="px-2 py-2 font-medium">Title</th>
-                <th className="px-2 py-2 font-medium w-56">Account</th>
-                <th className="px-2 py-2 font-medium w-36 text-right">Amount</th>
-                <th className="px-2 py-2 font-medium w-28">Tag</th>
-                <th className="px-2 py-2 font-medium w-40">Note</th>
-                <th className="w-16"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {templates.map((t) => {
-                const from = accountById(accounts, t.from_account_id);
-                const to = accountById(accounts, t.to_account_id);
-                const income = isIncome(t);
-                const internal = isInternal(t);
-                const emi = emiInfo(t, month);
-                const inactive = emi ? emi.idx < 1 || emi.idx > emi.total : false;
-                return (
-                  <tr key={t.id} className={inactive ? "opacity-45" : ""}>
-                    <td className="px-2 py-1.5 amount text-ink-faint whitespace-nowrap">
-                      every {ordinal(t.day_of_month)}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      {t.name}
-                      {emi && inactive && (
-                        <span className="text-[11px] text-ink-faint">
-                          {" "}· {emi.idx > emi.total ? `ended ${fmtMonth(emi.endISO)}` : `starts ${fmtMonth(emi.startISO)}`} — not counted
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-0 py-2 text-xs text-ink-faint">
-                      <div className="flex items-center">
-                        <span className="w-1/2 px-2">{from?.name}</span>
-                        <span>{internal ? "⇄" : "→"}</span>
-                        <span className="w-1/2 px-2">{to?.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-2 py-1.5 text-right">
-                      <Amount paise={income ? t.amount_paise : -t.amount_paise} signed={!internal}
-                        className={internal ? "text-ink-faint" : ""} />
-                    </td>
-                    <td className="px-2 py-1.5"></td>
-                    <td className="px-2 py-1.5 text-[11px]">
-                      {t.reimburse_account_id && t.reimburse_amount_paise ? (
-                        <span className="text-ledger">{accountById(accounts, t.reimburse_account_id)?.name} returns {formatPaise(t.reimburse_amount_paise)}</span>
-                      ) : null}
-                      {emi && !inactive ? (
-                        <span className="text-ink-faint">{t.reimburse_account_id && t.reimburse_amount_paise ? " · " : ""}EMI {emi.idx}/{emi.total} · ends {fmtMonth(emi.endISO)}</span>
-                      ) : t.total_installments && !emi ? (
-                        <span className="text-ink-faint">{t.reimburse_account_id && t.reimburse_amount_paise ? " · " : ""}installment {Math.min((doneCounts.get(t.id) ?? 0) + 1, t.total_installments)}/{t.total_installments} · set first-installment date for progress</span>
-                      ) : null}
-                    </td>
-                    <td className="px-2 py-1.5 text-right">
-                      <button onClick={() => { setEditing(t); setFormOpen(true); }}
-                        title={`Edit ${t.name}`} aria-label={`Edit ${t.name}`}
-                        className="text-ink-faint hover:text-ledger p-0.5">
-                        <Pencil size={13} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <p className="text-xs text-ink-faint mt-2">
-          Budgets and salary are fixed — the same every month. Pencil edits an
-          item; posting and paying happen in the Book.
-        </p>
-      </section>
+        )}
+      </div>
+
+      <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start">
+        {/* unified plan table */}
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xs uppercase tracking-[0.15em] text-ink-faint font-sans font-medium">
+              Planned in {monthName.split(" ")[0]} — one-offs and every-month together
+            </h2>
+            <button onClick={() => { setEditing(null); setFormOpen(true); }}
+              className="flex items-center gap-1 text-xs border border-ledger text-ledger px-2 py-1 hover:bg-ledger-soft">
+              <Plus size={12} /> recurring
+            </button>
+          </div>
+          <div className="border border-rule bg-paper-raised overflow-x-auto">
+            <table className="ledger-grid w-full text-sm min-w-[540px] md:min-w-[860px]">
+              <thead>
+                <tr className="text-left text-xs text-ink-faint">
+                  <th className="px-2 py-2 font-medium w-32">Date</th>
+                  <th className="px-2 py-2 font-medium">Title</th>
+                  <th className="px-2 py-2 font-medium w-56">Account</th>
+                  <th className="px-2 py-2 font-medium w-36 text-right">Amount</th>
+                  <th className="px-2 py-2 font-medium w-28">Tag</th>
+                  <th className="px-2 py-2 font-medium w-40">Note</th>
+                  <th className="w-16"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <OneOffAddRow month={month} accounts={active} onCreate={addOneOff} supabase={supabase} />
+                {planRows.map((r) => {
+                  if (r.oneoff) {
+                    const x = r.oneoff;
+                    return (
+                      <OneOffRow key={x.id + x.date + oneOffAmount(x)} txn={x} accounts={accounts}
+                        active={active} amountPaise={oneOffAmount(x)}
+                        onPatch={patchOneOff} onDelete={() => removeOneOff(x)} />
+                    );
+                  }
+                  const t = r.tpl!;
+                  const from = accountById(accounts, t.from_account_id);
+                  const to = accountById(accounts, t.to_account_id);
+                  const income = isIncome(t);
+                  const internal = isInternal(t);
+                  const emi = emiInfo(t, month);
+                  const inactive = emi ? emi.idx < 1 || emi.idx > emi.total : false;
+                  return (
+                    <tr key={t.id} className={inactive ? "opacity-45" : ""}>
+                      <td className="px-2 py-1.5 amount text-ink-faint whitespace-nowrap">
+                        every {ordinal(t.day_of_month)}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {t.name}
+                        {emi && inactive && (
+                          <span className="text-[11px] text-ink-faint">
+                            {" "}· {emi.idx > emi.total ? `ended ${fmtMonth(emi.endISO)}` : `starts ${fmtMonth(emi.startISO)}`} — not counted
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-0 py-2 text-xs text-ink-faint">
+                        <div className="flex items-center">
+                          <span className="w-1/2 px-2">{from?.name}</span>
+                          <span>{internal ? "⇄" : "→"}</span>
+                          <span className="w-1/2 px-2">{to?.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-2 py-1.5 text-right">
+                        <Amount paise={income ? t.amount_paise : -t.amount_paise} signed={!internal}
+                          className={internal ? "text-ink-faint" : ""} />
+                      </td>
+                      <td className="px-2 py-1.5"></td>
+                      <td className="px-2 py-1.5 text-[11px]">
+                        {t.reimburse_account_id && t.reimburse_amount_paise ? (
+                          <span className="text-ledger">{accountById(accounts, t.reimburse_account_id)?.name} returns {formatPaise(t.reimburse_amount_paise)}</span>
+                        ) : null}
+                        {emi && !inactive ? (
+                          <span className="text-ink-faint">{t.reimburse_account_id && t.reimburse_amount_paise ? " · " : ""}EMI {emi.idx}/{emi.total} · ends {fmtMonth(emi.endISO)}</span>
+                        ) : t.total_installments && !emi ? (
+                          <span className="text-ink-faint">{t.reimburse_account_id && t.reimburse_amount_paise ? " · " : ""}installment {Math.min((doneCounts.get(t.id) ?? 0) + 1, t.total_installments)}/{t.total_installments} · set first-installment date for progress</span>
+                        ) : null}
+                      </td>
+                      <td className="px-2 py-1.5 text-right">
+                        <button onClick={() => { setEditing(t); setFormOpen(true); }}
+                          title={`Edit ${t.name}`} aria-label={`Edit ${t.name}`}
+                          className="text-ink-faint hover:text-ledger p-0.5">
+                          <Pencil size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {planRows.length === 0 && (
+              <p className="text-sm text-ink-faint p-3">
+                {filtering
+                  ? "Nothing matches these filters."
+                  : "Nothing planned yet — a premium, a trip, a bonus. Added items show up in the Book as pending when the month arrives."}
+              </p>
+            )}
+          </div>
+          <p className="text-xs text-ink-faint mt-2">
+            “every Nth” rows repeat monthly — the pencil edits them; dated rows
+            are one-offs for this month only and edit inline. Posting and
+            paying happen in the Book.
+          </p>
+        </section>
+
+        {/* sidebar — same placement as the Book */}
+        <aside className="space-y-2">
+          <SideBlock title={`Card dues — ${monthName.split(" ")[0]}`}
+            total={<Amount paise={cardDue > 0 ? -cardDue : 0}
+              className={`px-3 ${cardDue > 0 ? "text-debit" : "text-ink-faint"}`} />}>
+            {cardPlans.map((cp) => (
+              <div key={cp.card.id} className="px-3 py-1.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="text-sm">{cp.card.name}</p>
+                  <Amount paise={cp.total > 0 ? -cp.total : 0}
+                    className={cp.total > 0 ? "text-debit" : "text-ink-faint"} />
+                </div>
+                <p className="text-[11px] text-ink-faint">
+                  bills {fmtDate(toISODate(cp.stmtDate))} · due {fmtDate(toISODate(cp.dueDate))}
+                </p>
+                <p className="text-[11px] text-ink-faint">
+                  {cp.estimateOnly
+                    ? "estimate — recurring card charges only, cycle hasn't started"
+                    : [
+                        cp.unbilledNow > 0 ? `${formatPaise(cp.unbilledNow)} already swiped` : null,
+                        cp.recurring > 0 ? `${formatPaise(cp.recurring)} recurring to come` : null,
+                        cp.planned > 0 ? `${formatPaise(cp.planned)} planned one-offs` : null,
+                      ].filter(Boolean).join(" + ") || "nothing yet — ad-hoc swipes will add up here"}
+                </p>
+              </div>
+            ))}
+            {cardPlans.length === 0 && (
+              <p className="text-sm text-ink-faint px-3 py-2">No card statement lands a due in this month.</p>
+            )}
+          </SideBlock>
+          <p className="text-xs text-ink-faint px-1">
+            Assumes this month&apos;s dues are paid this month. These are the
+            bills that carry over.
+          </p>
+        </aside>
+      </div>
 
       <Modal open={leftOpen} title={`How projected savings is calculated for ${monthName}`} onClose={() => setLeftOpen(false)}>
         <div className="text-sm space-y-2">

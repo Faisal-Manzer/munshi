@@ -11,6 +11,8 @@ import { TitleInput, useTitleSuggestions } from "@/components/title-input";
 import { DateInput } from "@/components/date-input";
 import { Field } from "@/components/field";
 import { Headline } from "@/components/headline";
+import { SideBlock } from "@/components/side-block";
+import { amountMatches } from "@/lib/search";
 import { InputModal, Modal } from "@/components/modal";
 import { AccountModal, BLOCK_OPTIONS } from "@/components/account-modal";
 import { AccountSheet } from "@/components/account-sheet";
@@ -76,16 +78,6 @@ type Row = TxnRow | VirtualRow | ReceiveRow;
  * trailing zeros imply — "520" hits 520.00–520.99, "500" hits 500–599.99,
  * commas and ₹ ignored.
  */
-function amountMatches(qRaw: string, paise: number): boolean {
-  const cleaned = qRaw.replace(/[₹,\s]/g, "");
-  if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return false;
-  const abs = Math.abs(paise);
-  if (cleaned.includes(".")) return abs === Math.round(Number(cleaned) * 100);
-  const zeros = /0*$/.exec(cleaned)![0].length;
-  const unit = Math.pow(10, zeros) * 100; // paise per bucket
-  return Math.floor(abs / unit) === Math.floor((Number(cleaned) * 100) / unit);
-}
-
 function fmtDate(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("en-IN", {
     day: "2-digit",
@@ -1389,28 +1381,6 @@ function ordinal(n: number | null): string {
   if (n === null) return "—";
   const s = ["th", "st", "nd", "rd"], v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
-}
-
-function SideBlock({
-  title, total, action, children,
-}: {
-  title: string;
-  total?: React.ReactNode;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="border border-rule bg-paper-raised">
-      <div className="flex items-center justify-between gap-2 px-3 pt-2 pb-1">
-        <span className="flex items-center gap-1.5">
-          <p className="text-[10px] uppercase tracking-[0.15em] text-ink-faint">{title}</p>
-          {action}
-        </span>
-        {total}
-      </div>
-      <div className="divide-y divide-rule/60 pb-1">{children}</div>
-    </div>
-  );
 }
 
 /**
