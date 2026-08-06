@@ -615,7 +615,7 @@ export default function BookPage() {
       <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start xl:items-stretch xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]">
         {/* ledger column */}
         <div className="min-w-0 xl:h-full xl:flex xl:flex-col">
-        <div className="border border-rule bg-paper-raised overflow-x-auto xl:flex-1 xl:min-h-0 xl:overflow-y-auto">
+        <div className="no-scrollbar border border-rule bg-paper-raised overflow-x-auto xl:flex-1 xl:min-h-0 xl:overflow-y-auto">
           <table className="ledger-grid w-full text-sm min-w-[540px] md:min-w-[860px]">
             <thead>
               <tr className="text-left text-xs text-ink-faint">
@@ -783,7 +783,7 @@ export default function BookPage() {
         </div>
 
         {/* sidebar scrolls independently */}
-        <aside className="space-y-4 xl:h-full xl:overflow-y-auto">
+        <aside className="no-scrollbar space-y-4 xl:h-full xl:overflow-y-auto">
           <SideBlock title="Accounts"
             total={<span className="amount text-xs">{formatPaise(
               active.filter((a) => ["bank", "cash"].includes(a.subtype))

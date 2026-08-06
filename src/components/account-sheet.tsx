@@ -133,7 +133,7 @@ export function AccountSheet({
     <div className="fixed inset-0 z-50 flex justify-end"
       style={{ background: "rgba(28,36,32,0.35)" }} onMouseDown={onClose}>
       <div
-        className="w-full max-w-[540px] h-full overflow-y-auto border-l border-rule-strong bg-paper-raised shadow-xl"
+        className="no-scrollbar w-full max-w-[540px] h-full overflow-y-auto border-l border-rule-strong bg-paper-raised shadow-xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
         {!account ? (

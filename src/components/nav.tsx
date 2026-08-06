@@ -46,7 +46,7 @@ export function Nav({ email }: { email: string }) {
           Munshi
         </Link>
         <LedgerSwitcher email={email} />
-        <nav className="flex items-center gap-1 overflow-x-auto">
+        <nav className="no-scrollbar flex items-center gap-1 overflow-x-auto">
           {LINKS.map((l) => {
             const active =
               l.href === "/" ? pathname === "/" : pathname.startsWith(l.href);

@@ -67,6 +67,15 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   outline-offset: 1px;
 }
 
+/* Scroll without a visible bar — panes still scroll by wheel/trackpad */
+.no-scrollbar {
+  scrollbar-width: none;       /* Firefox */
+  -ms-overflow-style: none;    /* old Edge */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;               /* WebKit */
+}
+
 /* Editable ledger grid */
 /* hover highlight layers over row tints (pending amber, just-added green) */
 .ledger-grid tbody tr:hover td {
