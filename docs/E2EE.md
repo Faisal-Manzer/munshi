@@ -142,67 +142,72 @@ Decisions:
 - **Attribution** (Vision §3): each op records author user id — comes free
   with the oplog.
 
-## 6. MCP inside the boundary
+## 6. MCP: one URL, everything in the chat
 
-Verdict from research: **MCP must run where plaintext lives.** Remote MCP
-over E2EE data is either "paste your key to the server" (voids E2EE) or
-attested enclaves (disproportionate). The production pattern is Actual
-Budget's: the MCP server embeds the app's own sync client.
+Product decision: **MCP is a single hosted URL** —
+`https://mcp.munshi.manzer.in/mcp` (Streamable HTTP, OAuth 2.1). The user
+pastes it into claude.ai or Claude Code and every action — reads, entries,
+plans, analytics, reconciliation — happens in the conversation. No CLI, no
+local install, no app visits per action.
 
-- **`munshi-mcp`** — stdio MCP server (`npx @munshi/mcp`), spawned by Claude
-  Code/Desktop. Embeds `@munshi/core`: syncs ciphertext from Supabase,
-  decrypts locally, serves tools over the local replica. stdio only at
-  first — no network surface at all.
-- **Key acquisition**, in order of preference:
-  1. OS keychain — one-time `munshi-mcp login` (Supabase auth + passphrase)
-     stores a device-wrapped masterKey copy in macOS Keychain/equivalent.
-  2. Locked state → URL-mode elicitation opening the web app to unlock
-     (spec-blessed since MCP 2025-11-25; never collect the passphrase via
-     plain elicitation).
-- **Write safety** (mirrors Vision §1 "AI proposes, user confirms"):
-  - every read tool `readOnlyHint: true`; no generic run_sql tool.
-  - **two-phase writes**: `plan_changes(ops[]) → {change_set_id, diff,
-    totals before/after}` then `apply_changes(change_set_id)` — the id is
-    the idempotency key, expires in minutes; destructive ops additionally
-    gated by a boolean elicitation confirm.
-  - every MCP mutation logged with `source: "mcp"` — auditable and undoable
-    in the app.
-- The AI chat inside the web app uses the same `@munshi/core` mutation API —
-  one brain, three callers (UI, in-app AI, MCP).
+Background research verdict stands: a hosted server cannot serve E2EE data
+without being *granted* a key. So the key grant is built into the OAuth
+consent itself, per ledger, honestly surfaced (see 6.2).
 
-### 6.1 Headless local MCP (no frontend needed)
+### 6.1 Connect flow (one-time, inside OAuth)
 
-The app never has to open. One-time `npx @munshi/mcp login`: Supabase auth
-(device-code or one browser popup) + passphrase prompt in the terminal →
-masterKey derived → device-wrapped copy stored in the OS keychain (macOS
-Keychain — optionally Touch-ID-gated per access — / Windows DPAPI /
-libsecret). Every subsequent run: Claude spawns the stdio server, key comes
-from the keychain, encrypted ops sync from Supabase, local replica
-materializes, tools serve. URL-elicitation unlock via the web app is only
-the fallback when the keychain is empty. Same shape as Actual Budget's MCP
-and `bw serve`.
+1. User adds the MCP URL in claude.ai → OAuth 2.1 (PKCE) kicks off → browser
+   opens the Munshi consent page.
+2. Consent page = the web app's own client code: Supabase login (or existing
+   session) + passphrase prompt (or silent device-key unlock, §3). The
+   masterKey is unwrapped **in the browser** — the passphrase never travels.
+3. Page lists ledgers with checkboxes: "Let AI read & write: Personal ☑
+   Company ☐". For each checked ledger the browser seals that ledgerKey to
+   the MCP service's public key (mechanically identical to adding a member)
+   and uploads the wrapped key.
+4. OAuth completes; Claude holds a token scoped to that user + those
+   ledgers. From here on, everything lives in the chat.
 
-### 6.2 Remote MCP for claude.ai (web)
+Managing the grant later = the same settings page: add/remove ledgers,
+revoke entirely. Grants expire (re-consent every 90 days, configurable).
 
-claude.ai cannot spawn local processes — it needs a hosted Streamable-HTTP
-MCP server with OAuth. A hosted server plus strict E2EE is a genuine
-contradiction: no key, no data. Two shipped answers, one deferred:
+### 6.2 Service-side custody (minimize what "hosted" costs)
 
-1. **Per-ledger "cloud AI access" opt-in (default path)**: the remote MCP
-   service has its own keypair; toggling the setting seals that one
-   ledgerKey to the service's public key — mechanically identical to adding
-   a member. The service decrypts in memory only, serves the same tool set
-   (two-phase writes included), OAuth 2.1 per user. Revoke = delete wrapped
-   key + forward key rotation. **That ledger is then readable by the
-   service** — the UI badges it plainly ("cloud AI can read this ledger");
-   un-toggled ledgers remain fully E2EE. This is Vision §4 tier 2 made a
-   standing per-ledger consent instead of per-conversation.
-2. **Self-hosted bridge (power users, E2EE intact)**: `munshi-mcp serve
-   --http` on the user's own always-on machine, exposed via a tunnel
-   (Cloudflare Tunnel or similar) with OAuth bearer + loopback-origin
-   token; claude.ai connects to the user's endpoint, plaintext never
-   touches Munshi infra.
-3. Attested enclave — deferred (see §10).
+- Service keypair lives in KMS; wrapped ledgerKeys in Postgres. Per request:
+  unwrap in memory, sync + decrypt the ledger's oplog into an in-memory
+  replica (`@munshi/core`, same brain), serve the tool call, drop plaintext.
+  Nothing decrypted ever touches disk.
+- **Honest boundary**: a consented ledger is readable by the Munshi service
+  — that is inherent to "all actions via a hosted URL". Constraint 1 ("we
+  cannot view data") holds absolutely for un-consented ledgers only. The
+  app badges consented ledgers ("cloud AI can read this"); the security
+  page says it verbatim. Revoke = delete wrapped key + forward key rotation
+  (§5).
+- Sensitive books stay un-consented and remain fully E2EE — per-ledger
+  granularity is the whole point of ledger-scoped keys.
+
+### 6.3 Tool surface & write safety
+
+Mirrors Vision §1 "AI proposes, user confirms":
+
+- Every read tool `readOnlyHint: true`; no generic run_sql tool.
+- **Two-phase writes**: `plan_changes(ops[]) → {change_set_id, diff, totals
+  before/after}` then `apply_changes(change_set_id)` — the id is the
+  idempotency key, expires in minutes; destructive ops additionally gated
+  by a boolean elicitation confirm (works in claude.ai).
+- Every MCP mutation logged with `source: "mcp"` + OAuth client — auditable
+  and undoable in the app; op attribution comes free from the oplog (§5).
+- The in-app AI chat uses the same `@munshi/core` mutation API — one brain,
+  all callers.
+
+### 6.4 Optional power-user modes (later, not v1)
+
+- **Local stdio server** (`npx @munshi/mcp`): plaintext never leaves the
+  device; key via OS keychain after a one-time login. For Claude
+  Code/Desktop users who refuse the cloud grant.
+- **Self-hosted bridge**: same server exposed via the user's own tunnel —
+  claude.ai connects to the user's endpoint, E2EE fully intact.
+- Attested enclave — deferred (see §10).
 
 ## 7. Analytics under E2EE
 
@@ -256,8 +261,8 @@ Then, in shippable phases:
    the oplog, plaintext tables dropped per-ledger. Per-ledger opt-in
    during rollout.
 4. **Sharing v2** — sealed-box invites, forward key rotation on revoke.
-5. **MCP server** — `@munshi/mcp` over `@munshi/core`, keychain login,
-   two-phase writes.
+5. **MCP service** — hosted Streamable-HTTP server over `@munshi/core`,
+   OAuth consent page with per-ledger key grants, two-phase writes.
 6. **Rollups + dashboard** — encrypted derived blobs, unified cross-ledger
    view (Vision §2).
 
