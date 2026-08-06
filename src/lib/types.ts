@@ -1,3 +1,17 @@
+export type LedgerRole = "owner" | "editor" | "viewer";
+
+export interface Ledger {
+  id: string;
+  name: string;
+  sort_order: number;
+  archived: boolean;
+}
+
+export interface LedgerMember {
+  email: string;
+  role: LedgerRole;
+}
+
 export type AccountKind = "asset" | "liability" | "income" | "expense" | "equity";
 
 export type AccountSubtype =
@@ -16,6 +30,7 @@ export type AccountSubtype =
 export interface Account {
   id: string;
   user_id: string;
+  ledger_id: string;
   name: string;
   kind: AccountKind;
   subtype: AccountSubtype;
@@ -37,6 +52,7 @@ export const DEFAULT_TAGS = ["avoidable", "partially avoidable", "deferrable"];
 
 export interface Transaction {
   id: string;
+  ledger_id: string;
   date: string; // yyyy-mm-dd
   description: string;
   status: TxnStatus;
@@ -71,6 +87,7 @@ export type RecurringKind =
 
 export interface RecurringTemplate {
   id: string;
+  ledger_id: string;
   name: string;
   kind: RecurringKind;
   day_of_month: number;

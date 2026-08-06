@@ -4,6 +4,7 @@ import type { RecurringTemplate } from "@/lib/types";
 
 function tpl(patch: Partial<RecurringTemplate>): RecurringTemplate {
   return {
+    ledger_id: "l1",
     id: "t1",
     name: "EMI",
     kind: "autodebit_cc",

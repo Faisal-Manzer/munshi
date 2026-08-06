@@ -33,6 +33,7 @@ import type {
 function acc(patch: Partial<Account> & { id: string }): Account {
   return {
     user_id: "u1",
+    ledger_id: "l1",
     name: patch.id,
     kind: "asset",
     subtype: "bank",
@@ -52,6 +53,7 @@ function acc(patch: Partial<Account> & { id: string }): Account {
 
 function tpl(patch: Partial<RecurringTemplate> & { id: string }): RecurringTemplate {
   return {
+    ledger_id: "l1",
     name: patch.id,
     kind: "autodebit_bank",
     day_of_month: 5,
@@ -81,6 +83,7 @@ function txn(
   const id = `x${++txnSeq}`;
   return {
     id,
+    ledger_id: "l1",
     date,
     description: id,
     status: "pending",

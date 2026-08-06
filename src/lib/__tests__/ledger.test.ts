@@ -14,6 +14,7 @@ import type { Account, AccountBalance } from "@/lib/types";
 
 function acc(patch: Partial<Account>): Account {
   return {
+    ledger_id: "l1",
     id: "a1",
     user_id: "u1",
     name: "Account",
