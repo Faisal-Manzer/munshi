@@ -68,6 +68,11 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 }
 
 /* Editable ledger grid */
+/* hover highlight layers over row tints (pending amber, just-added green) */
+.ledger-grid tbody tr:hover td {
+  background-color: color-mix(in srgb, var(--ledger) 5%, transparent);
+}
+
 .ledger-grid td, .ledger-grid th {
   border-bottom: 1px solid var(--rule);
 }
