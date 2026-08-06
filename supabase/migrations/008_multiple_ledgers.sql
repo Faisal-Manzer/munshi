@@ -78,6 +78,10 @@ begin
   drop table user_ledger;
 end $$;
 
+-- flush the deferred balanced-transaction trigger queued by the postings
+-- backfill, or the ALTERs below refuse to run
+set constraints all immediate;
+
 alter table accounts alter column ledger_id set not null;
 alter table transactions alter column ledger_id set not null;
 alter table postings alter column ledger_id set not null;
