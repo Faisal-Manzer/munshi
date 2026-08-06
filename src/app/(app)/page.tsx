@@ -551,10 +551,6 @@ export default function BookPage() {
 
   return (
     <div className="space-y-5 xl:h-[calc(100vh-6.5rem)] xl:flex xl:flex-col xl:overflow-hidden">
-      <datalist id="known-tags">
-        {knownTags.map((t) => <option key={t} value={t} />)}
-      </datalist>
-
       {/* header */}
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
@@ -1177,6 +1173,11 @@ export default function BookPage() {
         onAddChild={(idxs) => setCreateAcct(idxs)}
         onClose={closeSheet}
       />
+
+      {/* display:none, kept last so space-y rhythm matches the Plan page */}
+      <datalist id="known-tags">
+        {knownTags.map((t) => <option key={t} value={t} />)}
+      </datalist>
 
       <TemplateModal
         open={tplEdit !== null}
