@@ -34,15 +34,20 @@ values
   ('00000000-0000-0000-0000-000000000000', '33333333-3333-4333-8333-333333333333',
    'authenticated', 'authenticated', 'munshi-dbtest-c@example.invalid', now(), now());
 
-insert into accounts (id, user_id, name, kind, subtype, statement_day, due_day, parent_id)
+insert into ledgers (id, name) values
+  ('dddddddd-0000-4000-8000-000000000001', 'dbtest ledger A');
+insert into ledger_memberships (ledger_id, email, role) values
+  ('dddddddd-0000-4000-8000-000000000001', 'munshi-dbtest-a@example.invalid', 'owner');
+
+insert into accounts (id, ledger_id, user_id, name, kind, subtype, statement_day, due_day, parent_id)
 values
-  ('aaaaaaaa-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111',
+  ('aaaaaaaa-0000-4000-8000-000000000001', 'dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111',
    'dbtest bank', 'asset', 'bank', null, null, null),
-  ('aaaaaaaa-0000-4000-8000-000000000002', '11111111-1111-4111-8111-111111111111',
+  ('aaaaaaaa-0000-4000-8000-000000000002', 'dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111',
    'dbtest expense', 'expense', 'general_expense', null, null, null),
-  ('aaaaaaaa-0000-4000-8000-000000000003', '11111111-1111-4111-8111-111111111111',
+  ('aaaaaaaa-0000-4000-8000-000000000003', 'dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111',
    'dbtest card', 'liability', 'credit_card', 15, 5, null),
-  ('aaaaaaaa-0000-4000-8000-000000000004', '11111111-1111-4111-8111-111111111111',
+  ('aaaaaaaa-0000-4000-8000-000000000004', 'dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111',
    'dbtest subcard', 'liability', 'credit_card', null, null,
    'aaaaaaaa-0000-4000-8000-000000000003');
 
@@ -52,8 +57,8 @@ values
 do $$
 declare tid uuid;
 begin
-  insert into transactions (user_id, date, description)
-  values ('11111111-1111-4111-8111-111111111111', current_date, 'dbtest balanced')
+  insert into transactions (ledger_id, user_id, date, description)
+  values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', current_date, 'dbtest balanced')
   returning id into tid;
   insert into postings (user_id, transaction_id, account_id, amount_paise) values
     ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000001', -1000),
@@ -68,8 +73,8 @@ do $$
 declare tid uuid;
 begin
   begin
-    insert into transactions (user_id, date, description)
-    values ('11111111-1111-4111-8111-111111111111', current_date, 'dbtest unbalanced')
+    insert into transactions (ledger_id, user_id, date, description)
+    values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', current_date, 'dbtest unbalanced')
     returning id into tid;
     insert into postings (user_id, transaction_id, account_id, amount_paise) values
       ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000001', -1000);
@@ -87,10 +92,10 @@ end $$;
 do $$
 declare tid uuid; pid uuid := gen_random_uuid();
 begin
-  insert into accounts (id, user_id, name, kind, subtype, person_name)
-  values (pid, '11111111-1111-4111-8111-111111111111', 'dbtest person', 'asset', 'receivable', 'dbtest person');
-  insert into transactions (user_id, date, description, reimburse_account_id, reimburse_amount_paise)
-  values ('11111111-1111-4111-8111-111111111111', current_date, 'dbtest split', pid, 400)
+  insert into accounts (id, ledger_id, user_id, name, kind, subtype, person_name)
+  values (pid, 'dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', 'dbtest person', 'asset', 'receivable', 'dbtest person');
+  insert into transactions (ledger_id, user_id, date, description, reimburse_account_id, reimburse_amount_paise)
+  values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', current_date, 'dbtest split', pid, 400)
   returning id into tid;
   insert into postings (user_id, transaction_id, account_id, amount_paise) values
     ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000001', -1000),
@@ -107,8 +112,8 @@ do $$
 declare tid uuid;
 begin
   begin
-    insert into transactions (user_id, date, description)
-    values ('11111111-1111-4111-8111-111111111111', current_date, 'dbtest zero leg')
+    insert into transactions (ledger_id, user_id, date, description)
+    values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', current_date, 'dbtest zero leg')
     returning id into tid;
     insert into postings (user_id, transaction_id, account_id, amount_paise) values
       ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000001', 0);
@@ -122,8 +127,8 @@ end $$;
 do $$
 begin
   begin
-    insert into accounts (user_id, name, kind, subtype, statement_day)
-    values ('11111111-1111-4111-8111-111111111111', 'dbtest bad card', 'liability', 'credit_card', 32);
+    insert into accounts (ledger_id, user_id, name, kind, subtype, statement_day)
+    values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', 'dbtest bad card', 'liability', 'credit_card', 32);
     raise exception 'UNREACHABLE';
   exception when check_violation then null;
   end;
@@ -134,15 +139,15 @@ end $$;
 do $$
 begin
   begin
-    insert into recurring_templates (user_id, name, kind, day_of_month, amount_paise, from_account_id, to_account_id)
-    values ('11111111-1111-4111-8111-111111111111', 'dbtest bad tpl', 'manual', 5, 0,
+    insert into recurring_templates (ledger_id, user_id, name, kind, day_of_month, amount_paise, from_account_id, to_account_id)
+    values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', 'dbtest bad tpl', 'manual', 5, 0,
             'aaaaaaaa-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000002');
     raise exception 'UNREACHABLE';
   exception when check_violation then null;
   end;
   begin
-    insert into recurring_templates (user_id, name, kind, day_of_month, amount_paise, from_account_id, to_account_id)
-    values ('11111111-1111-4111-8111-111111111111', 'dbtest bad tpl', 'manual', 0, 100,
+    insert into recurring_templates (ledger_id, user_id, name, kind, day_of_month, amount_paise, from_account_id, to_account_id)
+    values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', 'dbtest bad tpl', 'manual', 0, 100,
             'aaaaaaaa-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000002');
     raise exception 'UNREACHABLE';
   exception when check_violation then null;
@@ -154,8 +159,8 @@ end $$;
 do $$
 declare tid uuid;
 begin
-  insert into transactions (user_id, date, description, tag)
-  values ('11111111-1111-4111-8111-111111111111', current_date, 'dbtest free tag', 'any custom tag')
+  insert into transactions (ledger_id, user_id, date, description, tag)
+  values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', current_date, 'dbtest free tag', 'any custom tag')
   returning id into tid;
   perform pg_temp.assert(tid is not null, 'free-text tag insert failed');
 end $$;
@@ -166,8 +171,8 @@ end $$;
 do $$
 declare tid uuid; n int;
 begin
-  insert into transactions (user_id, date, description)
-  values ('11111111-1111-4111-8111-111111111111', current_date, 'dbtest cascade')
+  insert into transactions (ledger_id, user_id, date, description)
+  values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', current_date, 'dbtest cascade')
   returning id into tid;
   insert into postings (user_id, transaction_id, account_id, amount_paise) values
     ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000001', -5),
@@ -189,14 +194,14 @@ end $$;
 do $$
 declare t1 uuid; t2 uuid; r record;
 begin
-  insert into transactions (user_id, date, description, status)
-  values ('11111111-1111-4111-8111-111111111111', current_date, 'dbtest done spend', 'done')
+  insert into transactions (ledger_id, user_id, date, description, status)
+  values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', current_date, 'dbtest done spend', 'done')
   returning id into t1;
   insert into postings (user_id, transaction_id, account_id, amount_paise) values
     ('11111111-1111-4111-8111-111111111111', t1, 'aaaaaaaa-0000-4000-8000-000000000001', -700),
     ('11111111-1111-4111-8111-111111111111', t1, 'aaaaaaaa-0000-4000-8000-000000000002', 700);
-  insert into transactions (user_id, date, description, status)
-  values ('11111111-1111-4111-8111-111111111111', current_date, 'dbtest pending spend', 'pending')
+  insert into transactions (ledger_id, user_id, date, description, status)
+  values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', current_date, 'dbtest pending spend', 'pending')
   returning id into t2;
   insert into postings (user_id, transaction_id, account_id, amount_paise) values
     ('11111111-1111-4111-8111-111111111111', t2, 'aaaaaaaa-0000-4000-8000-000000000001', -300),
@@ -236,26 +241,26 @@ do $$
 declare c date := stmt_cutoff(15); tid uuid; r record; sub record;
 begin
   -- billed: done spend on the cutoff day itself
-  insert into transactions (user_id, date, description, status)
-  values ('11111111-1111-4111-8111-111111111111', c, 'dbtest billed swipe', 'done') returning id into tid;
+  insert into transactions (ledger_id, user_id, date, description, status)
+  values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', c, 'dbtest billed swipe', 'done') returning id into tid;
   insert into postings (user_id, transaction_id, account_id, amount_paise) values
     ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000003', -2000),
     ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000002', 2000);
   -- unbilled: done spend after the cutoff
-  insert into transactions (user_id, date, description, status)
-  values ('11111111-1111-4111-8111-111111111111', c + 1, 'dbtest unbilled swipe', 'done') returning id into tid;
+  insert into transactions (ledger_id, user_id, date, description, status)
+  values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', c + 1, 'dbtest unbilled swipe', 'done') returning id into tid;
   insert into postings (user_id, transaction_id, account_id, amount_paise) values
     ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000003', -300),
     ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000002', 300);
   -- payment after the cutoff
-  insert into transactions (user_id, date, description, status)
-  values ('11111111-1111-4111-8111-111111111111', c + 1, 'dbtest bill payment', 'done') returning id into tid;
+  insert into transactions (ledger_id, user_id, date, description, status)
+  values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', c + 1, 'dbtest bill payment', 'done') returning id into tid;
   insert into postings (user_id, transaction_id, account_id, amount_paise) values
     ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000001', -500),
     ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000003', 500);
   -- pending swipe after the cutoff must NOT count
-  insert into transactions (user_id, date, description, status)
-  values ('11111111-1111-4111-8111-111111111111', c + 1, 'dbtest pending swipe', 'pending') returning id into tid;
+  insert into transactions (ledger_id, user_id, date, description, status)
+  values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', c + 1, 'dbtest pending swipe', 'pending') returning id into tid;
   insert into postings (user_id, transaction_id, account_id, amount_paise) values
     ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000003', -999),
     ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000002', 999);
@@ -275,8 +280,36 @@ begin
   perform pg_temp.assert(sub.cutoff = c, 'sub-card cutoff not inherited: ' || sub.cutoff);
 end $$;
 
--- --------------------------------------------------------- RLS + shared ledger
-\echo 'test: RLS — a user sees own rows, a stranger sees nothing'
+-- ------------------------------------------------- ledger triggers
+\echo 'test: postings + child accounts inherit ledger_id'
+
+do $$
+declare tid uuid; cid uuid; l uuid;
+begin
+  insert into transactions (ledger_id, user_id, date, description)
+  values ('dddddddd-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', current_date, 'dbtest inherit')
+  returning id into tid;
+  insert into postings (user_id, transaction_id, account_id, amount_paise) values
+    ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000001', -10),
+    ('11111111-1111-4111-8111-111111111111', tid, 'aaaaaaaa-0000-4000-8000-000000000002', 10);
+  set constraints all immediate;
+  set constraints all deferred;
+  perform pg_temp.assert(
+    (select count(*) from postings where transaction_id = tid
+      and ledger_id = 'dddddddd-0000-4000-8000-000000000001') = 2,
+    'postings did not inherit the transaction ledger');
+  -- child account without explicit ledger_id inherits the parent's
+  insert into accounts (user_id, name, kind, subtype, parent_id)
+  values ('11111111-1111-4111-8111-111111111111', 'dbtest envelope', 'asset', 'envelope',
+          'aaaaaaaa-0000-4000-8000-000000000001')
+  returning id into cid;
+  select ledger_id into l from accounts where id = cid;
+  perform pg_temp.assert(l = 'dddddddd-0000-4000-8000-000000000001',
+    'child account did not inherit parent ledger');
+end $$;
+
+-- --------------------------------------------------- RLS + per-ledger sharing
+\echo 'test: RLS — a member sees the ledger, a stranger sees nothing'
 
 set local role authenticated;
 do $$ begin perform set_config('request.jwt.claims',
@@ -287,8 +320,11 @@ declare n int;
 begin
   select count(*) into n from accounts where id = 'aaaaaaaa-0000-4000-8000-000000000001';
   perform pg_temp.assert(n = 1, 'owner cannot see own account');
-  -- inserted rows get user_id from auth.uid()
-  insert into accounts (name, kind, subtype) values ('dbtest rls insert', 'asset', 'cash');
+  select count(*) into n from ledgers where id = 'dddddddd-0000-4000-8000-000000000001';
+  perform pg_temp.assert(n = 1, 'member cannot see own ledger row');
+  -- inserted rows still get user_id from auth.uid()
+  insert into accounts (ledger_id, name, kind, subtype)
+  values ('dddddddd-0000-4000-8000-000000000001', 'dbtest rls insert', 'asset', 'cash');
   select count(*) into n from accounts
   where name = 'dbtest rls insert' and user_id = '11111111-1111-4111-8111-111111111111';
   perform pg_temp.assert(n = 1, 'auth.uid() default not applied on insert');
@@ -300,69 +336,58 @@ do $$ begin perform set_config('request.jwt.claims',
 do $$
 declare n int;
 begin
-  select count(*) into n from accounts where user_id = '11111111-1111-4111-8111-111111111111';
-  perform pg_temp.assert(n = 0, 'stranger can see another user''s accounts');
+  select count(*) into n from accounts where ledger_id = 'dddddddd-0000-4000-8000-000000000001';
+  perform pg_temp.assert(n = 0, 'stranger can see another ledger''s accounts');
+  select count(*) into n from ledgers;
+  perform pg_temp.assert(n = 0, 'stranger can see another user''s ledger');
   select count(*) into n from account_balances where account_id = 'aaaaaaaa-0000-4000-8000-000000000001';
-  perform pg_temp.assert(n = 0, 'stranger can see another user''s balances via the view');
-  -- ledger_members has no policies — direct writes must fail
+  perform pg_temp.assert(n = 0, 'stranger can see another ledger''s balances via the view');
+  -- writing into someone else's ledger must fail
   begin
-    insert into ledger_members (email) values ('munshi-dbtest-b@example.invalid');
+    insert into accounts (ledger_id, name, kind, subtype)
+    values ('dddddddd-0000-4000-8000-000000000001', 'dbtest intrusion', 'asset', 'cash');
+    raise exception 'UNREACHABLE';
+  exception when insufficient_privilege then null;
+  end;
+  -- ledger_memberships has no policies — direct writes must fail
+  begin
+    insert into ledger_memberships (ledger_id, email)
+    values ('dddddddd-0000-4000-8000-000000000001', 'munshi-dbtest-b@example.invalid');
     raise exception 'UNREACHABLE';
   exception when insufficient_privilege then null;
   end;
 end $$;
 
-\echo 'test: member RPCs refuse non-members'
+\echo 'test: member RPCs refuse non-owners'
 
 do $$
 begin
   begin
-    perform ledger_member_add('munshi-dbtest-x@example.invalid');
+    perform ledger_member_add('dddddddd-0000-4000-8000-000000000001', 'munshi-dbtest-x@example.invalid');
     raise exception 'UNREACHABLE';
   exception when others then
-    if sqlerrm not like '%Only existing members%' then
-      raise exception 'expected members-only error, got: %', sqlerrm;
+    if sqlerrm not like '%Only an owner%' then
+      raise exception 'expected owner-only error, got: %', sqlerrm;
     end if;
   end;
 end $$;
 
-\echo 'test: shared ledger — members see each other''s rows'
+\echo 'test: shared ledger — an added editor sees and edits the rows'
 
-reset role;
-insert into ledger_members (email) values
-  ('munshi-dbtest-a@example.invalid'), ('munshi-dbtest-b@example.invalid');
-
-set local role authenticated;
 do $$ begin perform set_config('request.jwt.claims',
-  '{"sub":"22222222-2222-4222-8222-222222222222","email":"munshi-dbtest-b@example.invalid"}', true); end $$;
-
-do $$
-declare n int;
-begin
-  select count(*) into n from accounts where id = 'aaaaaaaa-0000-4000-8000-000000000001';
-  perform pg_temp.assert(n = 1, 'member cannot see shared account');
-  select count(*) into n from account_balances where account_id = 'aaaaaaaa-0000-4000-8000-000000000001';
-  perform pg_temp.assert(n = 1, 'member cannot see shared balances');
-  -- members can edit shared rows
-  update transactions set notes = 'dbtest shared edit'
-  where user_id = '11111111-1111-4111-8111-111111111111' and description = 'dbtest free tag';
-  select count(*) into n from transactions
-  where notes = 'dbtest shared edit' and user_id = '11111111-1111-4111-8111-111111111111';
-  perform pg_temp.assert(n = 1, 'member cannot edit shared transaction');
-end $$;
-
-\echo 'test: member RPCs — add works for members, self-removal is refused'
+  '{"sub":"11111111-1111-4111-8111-111111111111","email":"munshi-dbtest-a@example.invalid"}', true); end $$;
 
 do $$
 begin
-  -- add (mixed case in, lower-cased out) — caller is member B
-  perform ledger_member_add('Munshi-DBTest-C@Example.Invalid');
+  -- owner adds B as editor (mixed case in, lower-cased out)
+  perform ledger_member_add('dddddddd-0000-4000-8000-000000000001', 'Munshi-DBTest-B@Example.Invalid', 'editor');
   perform pg_temp.assert(
-    (select count(*) from ledger_members_list() l where l = 'munshi-dbtest-c@example.invalid') = 1,
+    (select count(*) from ledger_members_list('dddddddd-0000-4000-8000-000000000001') m
+     where m.email = 'munshi-dbtest-b@example.invalid' and m.role = 'editor') = 1,
     'added member not in list (or not lower-cased)');
   -- garbage input refused
   begin
-    perform ledger_member_add('not-an-email');
+    perform ledger_member_add('dddddddd-0000-4000-8000-000000000001', 'not-an-email');
     raise exception 'UNREACHABLE';
   exception when others then
     if sqlerrm not like '%Not an email%' then
@@ -371,31 +396,106 @@ begin
   end;
   -- self-removal refused
   begin
-    perform ledger_member_remove('munshi-dbtest-b@example.invalid');
+    perform ledger_member_remove('dddddddd-0000-4000-8000-000000000001', 'munshi-dbtest-a@example.invalid');
     raise exception 'UNREACHABLE';
   exception when others then
     if sqlerrm not like '%cannot remove your own email%' then
       raise exception 'expected self-removal refusal, got: %', sqlerrm;
     end if;
   end;
-  -- removing someone else works
-  perform ledger_member_remove('munshi-dbtest-c@example.invalid');
-  perform pg_temp.assert(
-    (select count(*) from ledger_members_list() l where l = 'munshi-dbtest-c@example.invalid') = 0,
-    'removed member still in list');
 end $$;
 
-\echo 'test: non-member still keeps a private ledger'
-
 do $$ begin perform set_config('request.jwt.claims',
-  '{"sub":"33333333-3333-4333-8333-333333333333","email":"munshi-dbtest-x-nonmember@example.invalid"}', true); end $$;
+  '{"sub":"22222222-2222-4222-8222-222222222222","email":"munshi-dbtest-b@example.invalid"}', true); end $$;
 
 do $$
 declare n int;
 begin
-  insert into accounts (name, kind, subtype) values ('dbtest private', 'asset', 'cash');
+  select count(*) into n from accounts where id = 'aaaaaaaa-0000-4000-8000-000000000001';
+  perform pg_temp.assert(n = 1, 'editor cannot see shared account');
+  select count(*) into n from account_balances where account_id = 'aaaaaaaa-0000-4000-8000-000000000001';
+  perform pg_temp.assert(n = 1, 'editor cannot see shared balances');
+  update transactions set notes = 'dbtest shared edit'
+  where ledger_id = 'dddddddd-0000-4000-8000-000000000001' and description = 'dbtest free tag';
+  select count(*) into n from transactions where notes = 'dbtest shared edit';
+  perform pg_temp.assert(n = 1, 'editor cannot edit shared transaction');
+  -- editors manage entries, not people: member RPCs stay owner-only
+  begin
+    perform ledger_member_add('dddddddd-0000-4000-8000-000000000001', 'munshi-dbtest-x@example.invalid');
+    raise exception 'UNREACHABLE';
+  exception when others then
+    if sqlerrm not like '%Only an owner%' then
+      raise exception 'expected owner-only error, got: %', sqlerrm;
+    end if;
+  end;
+end $$;
+
+\echo 'test: viewer — reads everything, writes nothing'
+
+do $$ begin perform set_config('request.jwt.claims',
+  '{"sub":"11111111-1111-4111-8111-111111111111","email":"munshi-dbtest-a@example.invalid"}', true); end $$;
+do $$ begin
+  perform ledger_member_add('dddddddd-0000-4000-8000-000000000001', 'munshi-dbtest-c@example.invalid', 'viewer');
+end $$;
+
+do $$ begin perform set_config('request.jwt.claims',
+  '{"sub":"33333333-3333-4333-8333-333333333333","email":"munshi-dbtest-c@example.invalid"}', true); end $$;
+
+do $$
+declare n int;
+begin
+  select count(*) into n from accounts where id = 'aaaaaaaa-0000-4000-8000-000000000001';
+  perform pg_temp.assert(n = 1, 'viewer cannot see shared account');
+  begin
+    insert into transactions (ledger_id, date, description)
+    values ('dddddddd-0000-4000-8000-000000000001', current_date, 'dbtest viewer write');
+    raise exception 'UNREACHABLE';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    update accounts set name = 'dbtest viewer rename'
+    where id = 'aaaaaaaa-0000-4000-8000-000000000001';
+    if found then raise exception 'UNREACHABLE'; end if;
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+
+\echo 'test: owner can remove a member'
+
+do $$ begin perform set_config('request.jwt.claims',
+  '{"sub":"11111111-1111-4111-8111-111111111111","email":"munshi-dbtest-a@example.invalid"}', true); end $$;
+
+do $$
+begin
+  perform ledger_member_remove('dddddddd-0000-4000-8000-000000000001', 'munshi-dbtest-c@example.invalid');
+  perform pg_temp.assert(
+    (select count(*) from ledger_members_list('dddddddd-0000-4000-8000-000000000001') m
+     where m.email = 'munshi-dbtest-c@example.invalid') = 0,
+    'removed member still in list');
+end $$;
+
+\echo 'test: ledger_create — caller becomes owner of a fresh private book'
+
+do $$ begin perform set_config('request.jwt.claims',
+  '{"sub":"33333333-3333-4333-8333-333333333333","email":"munshi-dbtest-c@example.invalid"}', true); end $$;
+
+do $$
+declare l uuid; n int;
+begin
+  l := ledger_create('dbtest private book');
+  select count(*) into n from ledgers where id = l;
+  perform pg_temp.assert(n = 1, 'creator cannot see the ledger they created');
+  insert into accounts (ledger_id, name, kind, subtype) values (l, 'dbtest private', 'asset', 'cash');
   select count(*) into n from accounts;
-  perform pg_temp.assert(n = 1, 'non-member sees more than their own rows: ' || n);
+  perform pg_temp.assert(n = 1, 'creator sees more than their own rows: ' || n);
+  begin
+    l := ledger_create('   ');
+    raise exception 'UNREACHABLE';
+  exception when others then
+    if sqlerrm not like '%needs a name%' then
+      raise exception 'expected name validation error, got: %', sqlerrm;
+    end if;
+  end;
 end $$;
 
 reset role;
