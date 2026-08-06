@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "lucide-react";
 
 export interface SelectOption {
@@ -16,7 +17,8 @@ export interface SelectGroup {
 /**
  * Custom dropdown replacing native <select> — ledger-styled, keyboard-first:
  * type to filter, arrows to move, Enter selects, Escape closes.
- * Panel is fixed-positioned so it escapes overflow-x-auto table wrappers.
+ * Panel portals to body, fixed-positioned — escapes overflow wrappers and
+ * transformed ancestors (animated modal panels) alike.
  */
 export function Select({
   value, onChange, groups, placeholder = "—", className = "", chrome = false, disabled = false,
@@ -148,7 +150,7 @@ export function Select({
         </span>
         <ChevronDown size={12} className="shrink-0 text-ink-faint" />
       </button>
-      {open && (
+      {open && createPortal(
         <div
           ref={panelRef}
           onKeyDown={onKey}
@@ -198,7 +200,8 @@ export function Select({
               <p className="px-3 py-2 text-xs text-ink-faint">No match.</p>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

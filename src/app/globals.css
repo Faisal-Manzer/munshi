@@ -89,9 +89,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   /* backwards fill only — a retained transform would trap fixed overlays */
   .page-enter { animation: rise 0.18s ease-out backwards; }
   .modal-backdrop { animation: fade-in 0.15s ease-out both; }
-  .modal-panel { animation: pop 0.18s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
-  .sheet-panel { animation: slide-in 0.22s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
-  .menu-pop { animation: pop 0.12s ease-out both; transform-origin: top left; }
+  .modal-panel { animation: pop 0.18s cubic-bezier(0.2, 0.8, 0.3, 1) backwards; }
+  .sheet-panel { animation: slide-in 0.22s cubic-bezier(0.2, 0.8, 0.3, 1) backwards; }
+  .menu-pop { animation: pop 0.12s ease-out backwards; transform-origin: top left; }
   tr.just-added td { animation: row-flash 0.9s ease-out; }
   button, a { transition: color 0.15s ease, background-color 0.15s ease,
     border-color 0.15s ease, opacity 0.15s ease; }
