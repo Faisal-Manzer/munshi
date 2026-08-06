@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useActiveLedger } from "@/lib/ledger-context";
 import { Modal } from "@/components/modal";
 import { Field } from "@/components/field";
-import { BookOpen, Check, ChevronDown, Eye, EyeOff, Plus, X } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Eye, EyeOff, Plus, Users, X } from "lucide-react";
 import type { LedgerMember, LedgerRole } from "@/lib/types";
 
 const LINKS = [
@@ -18,7 +18,6 @@ const LINKS = [
 export function Nav({ email }: { email: string }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [membersOpen, setMembersOpen] = useState(false);
   const [privacy, setPrivacy] = useState(false);
 
   useEffect(() => {
@@ -46,7 +45,7 @@ export function Nav({ email }: { email: string }) {
         <Link href="/" className="font-display text-xl leading-none" style={{ fontFamily: "var(--font-instrument-serif)" }}>
           Munshi
         </Link>
-        <LedgerSwitcher />
+        <LedgerSwitcher email={email} />
         <nav className="flex items-center gap-1 overflow-x-auto">
           {LINKS.map((l) => {
             const active =
@@ -75,13 +74,9 @@ export function Nav({ email }: { email: string }) {
           >
             {privacy ? <EyeOff size={15} /> : <Eye size={15} />}
           </button>
-          <button
-            onClick={() => setMembersOpen(true)}
-            className="hidden sm:block text-xs text-ink-faint hover:text-ledger"
-            title="Ledger members — who shares the active ledger"
-          >
+          <span className="hidden sm:block text-xs text-ink-faint" title="Signed in as">
             {email}
-          </button>
+          </span>
           <button
             onClick={signOut}
             className="text-xs text-ink-soft hover:text-debit"
@@ -90,16 +85,16 @@ export function Nav({ email }: { email: string }) {
           </button>
         </div>
       </div>
-      {membersOpen && <MembersModal email={email} onClose={() => setMembersOpen(false)} />}
     </header>
   );
 }
 
-/** Which book is on the desk — switch, create, rename. */
-function LedgerSwitcher() {
+/** Which book is on the desk — switch, share, create, rename. */
+function LedgerSwitcher({ email }: { email: string }) {
   const { ledgers, ledger, ledgerId, switchLedger, createLedger, renameLedger } =
     useActiveLedger();
   const [open, setOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState("");
@@ -170,6 +165,15 @@ function LedgerSwitcher() {
             <button
               onClick={() => {
                 setOpen(false);
+                setSharing(true);
+              }}
+              className="w-full flex items-center gap-1.5 px-3 py-1.5 text-sm text-left text-ink-soft hover:bg-ledger-soft/40"
+            >
+              <Users size={13} /> Share this ledger\u2026
+            </button>
+            <button
+              onClick={() => {
+                setOpen(false);
                 setName(ledger?.name ?? "");
                 setRenaming(true);
               }}
@@ -190,6 +194,7 @@ function LedgerSwitcher() {
           </div>
         </div>
       )}
+      {sharing && <MembersModal email={email} onClose={() => setSharing(false)} />}
       {(creating || renaming) && (
         <Modal
           open
