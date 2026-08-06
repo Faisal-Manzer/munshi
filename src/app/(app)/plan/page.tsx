@@ -37,6 +37,39 @@ function fmtDate(iso: string) {
   });
 }
 
+function PageSkeleton() {
+  return (
+    <div className="space-y-5" aria-busy title="Loading…">
+      <div className="flex items-end justify-between gap-3">
+        <div className="shimmer h-10 w-[330px]" />
+        <div className="shimmer h-8 w-[420px]" />
+      </div>
+      <div className="flex gap-2">
+        <div className="shimmer h-8 w-56" />
+        <div className="shimmer h-8 w-44" />
+        <div className="shimmer h-8 w-32" />
+        <div className="shimmer h-8 w-32" />
+      </div>
+      <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start">
+        <div className="border border-rule bg-paper-raised p-2 space-y-2">
+          {Array.from({ length: 10 }, (_, i) => (
+            <div key={i} className="shimmer h-8" style={{ opacity: 1 - i * 0.09 }} />
+          ))}
+        </div>
+        <div className="space-y-4">
+          {Array.from({ length: 3 }, (_, i) => (
+            <div key={i} className="border border-rule bg-paper-raised p-3 space-y-2">
+              <div className="shimmer h-3 w-24" />
+              <div className="shimmer h-6" />
+              <div className="shimmer h-6 w-3/4" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PlanPage() {
   const { supabase, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
@@ -214,7 +247,7 @@ export default function PlanPage() {
     setMonth(next);
   }
 
-  if (loading) return <p className="text-sm text-ink-faint">Loading…</p>;
+  if (loading) return <PageSkeleton />;
 
   const monthName = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1)
     .toLocaleDateString("en-IN", { month: "long", year: "numeric" });

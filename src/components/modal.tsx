@@ -22,10 +22,11 @@ export function Modal({
 
   if (!open) return null;
   return (
-    <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(28,36,32,0.35)" }} onMouseDown={onClose}>
-      <div className={`modal-panel w-full ${wide ? "max-w-xl" : "max-w-sm"} border border-rule-strong bg-paper-raised shadow-xl max-h-[90vh] overflow-y-auto`}
-        onMouseDown={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-backdrop absolute inset-0 -z-10 pointer-events-none"
+        style={{ background: "rgba(28,36,32,0.35)" }} aria-hidden />
+      <div className={`modal-panel w-full ${wide ? "max-w-xl" : "max-w-sm"} border border-rule-strong bg-paper-raised shadow-xl max-h-[90vh] overflow-y-auto`}>
         <div className="px-4 pt-3 pb-2 border-b border-rule">
           <p className="text-sm font-medium">{title}</p>
           {subtitle && <p className="text-xs text-ink-faint">{subtitle}</p>}

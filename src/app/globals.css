@@ -73,6 +73,17 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 @keyframes pop { from { opacity: 0; transform: scale(0.97) } }
 @keyframes slide-in { from { opacity: 0; transform: translateX(28px) } }
 @keyframes row-flash { 0% { background-color: var(--ledger-soft) } }
+@keyframes shimmer-sweep {
+  from { background-position: 100% 0 }
+  to { background-position: 0 0 }
+}
+
+/* Loading placeholder — a quiet sweep over ruled paper */
+.shimmer {
+  background: linear-gradient(90deg, var(--rule) 25%, var(--paper-raised) 40%, var(--rule) 60%);
+  background-size: 300% 100%;
+  animation: shimmer-sweep 1.3s ease-in-out infinite;
+}
 
 @media (prefers-reduced-motion: no-preference) {
   .page-enter { animation: rise 0.18s ease-out both; }
