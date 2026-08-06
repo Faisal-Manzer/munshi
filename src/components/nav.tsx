@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useActiveLedger } from "@/lib/ledger-context";
 import { Modal } from "@/components/modal";
 import { Field } from "@/components/field";
-import { BookOpen, Check, ChevronDown, Eye, EyeOff, Plus, Users, X } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Eye, EyeOff, Pencil, Plus, Users, X } from "lucide-react";
 import type { LedgerMember, LedgerRole } from "@/lib/types";
 
 const LINKS = [
@@ -169,7 +169,7 @@ function LedgerSwitcher({ email }: { email: string }) {
               }}
               className="w-full flex items-center gap-1.5 px-3 py-1.5 text-sm text-left text-ink-soft hover:bg-ledger-soft/40"
             >
-              <Users size={13} /> Share this ledger\u2026
+              <Users size={13} /> Share this ledger…
             </button>
             <button
               onClick={() => {
@@ -177,9 +177,9 @@ function LedgerSwitcher({ email }: { email: string }) {
                 setName(ledger?.name ?? "");
                 setRenaming(true);
               }}
-              className="w-full px-3 py-1.5 text-sm text-left text-ink-soft hover:bg-ledger-soft/40"
+              className="w-full flex items-center gap-1.5 px-3 py-1.5 text-sm text-left text-ink-soft hover:bg-ledger-soft/40"
             >
-              Rename this ledger…
+              <Pencil size={13} /> Rename this ledger…
             </button>
             <button
               onClick={() => {
@@ -325,7 +325,7 @@ function MembersModal({ email, onClose }: { email: string; onClose: () => void }
   }
 
   async function remove(m: string) {
-    if (!confirm(`Remove ${m} from \u201c${ledger?.name}\u201d? They lose access immediately.`)) return;
+    if (!confirm(`Remove ${m} from “${ledger?.name}”? They lose access immediately.`)) return;
     setBusy(true);
     const { error: e } = await supabase.rpc("ledger_member_remove", { l: ledgerId, old_email: m });
     setBusy(false);
@@ -335,7 +335,7 @@ function MembersModal({ email, onClose }: { email: string; onClose: () => void }
   }
 
   return (
-    <Modal open title={`Share \u201c${ledger?.name ?? ""}\u201d`}
+    <Modal open title={`Share “${ledger?.name ?? ""}”`}
       subtitle="Everyone below signs in with Google and opens this exact book"
       onClose={onClose}>
       <div className="space-y-4">
@@ -345,7 +345,7 @@ function MembersModal({ email, onClose }: { email: string; onClose: () => void }
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && invite()}
-              placeholder="Add people by email\u2026"
+              placeholder="Add people by email…"
               autoFocus
               className="flex-1 min-w-0 border border-rule px-3 py-2 text-sm bg-paper-raised"
             />
@@ -367,7 +367,7 @@ function MembersModal({ email, onClose }: { email: string; onClose: () => void }
         )}
         {isOwner && <p className="text-[11px] text-ink-faint -mt-2">{ROLE_HELP[newRole]}</p>}
 
-        {members === null && !error && <p className="text-sm text-ink-faint">Loading\u2026</p>}
+        {members === null && !error && <p className="text-sm text-ink-faint">Loading…</p>}
         {members !== null && (
           <div>
             <p className="text-[11px] uppercase tracking-wide text-ink-faint mb-1">
@@ -384,7 +384,7 @@ function MembersModal({ email, onClose }: { email: string; onClose: () => void }
                     <div className="flex-1 min-w-0">
                       <p className="text-sm truncate">
                         {m.email}
-                        {self && <span className="text-xs text-ink-faint"> \u00b7 you</span>}
+                        {self && <span className="text-xs text-ink-faint"> · you</span>}
                       </p>
                       <p className="text-[11px] text-ink-faint">{ROLE_HELP[m.role]}</p>
                     </div>
