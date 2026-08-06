@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLedger, accountById } from "@/lib/use-ledger";
 import { Amount } from "@/components/amount";
+import { Headline } from "@/components/headline";
 import { AccountSelect } from "@/components/account-select";
 import { Modal } from "@/components/modal";
 import { TemplateModal } from "@/components/template-form";
@@ -170,42 +171,43 @@ export default function PlanPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3 flex-wrap">
-        <button onClick={() => shiftMonth(-1)} disabled={month <= nextMonth}
-          className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft disabled:opacity-30 disabled:hover:bg-transparent">←</button>
-        <div className="w-[250px] text-center">
-          <p className="text-xs uppercase tracking-[0.2em] text-ink-faint">Plan</p>
-          <h1 className="text-3xl whitespace-nowrap">{monthName}</h1>
+      <div className="flex items-end justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <button onClick={() => shiftMonth(-1)} disabled={month <= nextMonth}
+            className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft disabled:opacity-30 disabled:hover:bg-transparent">←</button>
+          <h1 className="text-3xl w-[250px] text-center whitespace-nowrap">{monthName}</h1>
+          <button onClick={() => shiftMonth(1)} className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft">→</button>
+          {month !== nextMonth && (
+            <button onClick={() => setMonth(nextMonth)}
+              className="text-xs text-ink-faint hover:text-ledger underline decoration-dotted">
+              back to next month
+            </button>
+          )}
         </div>
-        <button onClick={() => shiftMonth(1)} className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft">→</button>
-        {month !== nextMonth && (
-          <button onClick={() => setMonth(nextMonth)}
-            className="text-xs text-ink-faint hover:text-ledger underline decoration-dotted">
-            back to next month
-          </button>
-        )}
       </div>
 
       {error && <p className="text-sm text-debit border border-debit-soft bg-debit-soft px-3 py-2">{error}</p>}
 
-      <section className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-        <Stat label="Coming in" v={plannedIn} cls="text-ledger" />
-        <Stat label="Cash committed" v={committed} />
-        <Stat label="Card dues landing" v={cardDue} cls={cardDue > 0 ? "text-debit" : ""} />
-        <Stat label="Coming back" v={expectedBack} cls="text-ledger" />
-        <button onClick={() => setLeftOpen(true)} className="text-left" title="How is this calculated?">
-          <Stat label="Projected savings ⓘ" v={left} cls={left >= 0 ? "text-ledger" : "text-debit"} />
-        </button>
-      </section>
-
-      <p className="text-sm text-ink-soft">
-        Liquid today <span className="amount">{formatPaise(liquidNow)}</span>
-        {" → projected by end of "}{monthName}:{" "}
-        <span className={`amount ${projectedLiquid >= 0 ? "text-ledger" : "text-debit"}`}>
-          {formatPaise(projectedLiquid)}
-        </span>
-        <span className="text-xs text-ink-faint"> · liquid accounts + each month&apos;s left from {fmtMonth(nextMonth + "-01")} on; ad-hoc spends not included</span>
-      </p>
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <p className="text-sm text-ink-soft">
+          Liquid today <span className="amount">{formatPaise(liquidNow)}</span>
+          {" → projected by end of "}{monthName}:{" "}
+          <span className={`amount ${projectedLiquid >= 0 ? "text-ledger" : "text-debit"}`}>
+            {formatPaise(projectedLiquid)}
+          </span>
+          <br />
+          <span className="text-xs text-ink-faint">liquid accounts + each month&apos;s left from {fmtMonth(nextMonth + "-01")} on; ad-hoc spends not included</span>
+        </p>
+        <div className="flex gap-6 text-sm flex-wrap">
+          <Headline label="coming in" paise={plannedIn} cls="text-ledger" incoming={plannedIn > 0} />
+          <Headline label="cash committed" paise={committed} />
+          <Headline label="card dues landing" paise={cardDue > 0 ? -cardDue : 0} cls={cardDue > 0 ? "text-debit" : ""} />
+          <Headline label="coming back" paise={expectedBack} cls="text-ledger" incoming={expectedBack > 0} />
+          <button onClick={() => setLeftOpen(true)} title="How is this calculated?" className="text-right">
+            <Headline label="projected savings ⓘ" paise={left} cls={left >= 0 ? "text-ledger" : "text-debit"} />
+          </button>
+        </div>
+      </div>
 
       <section>
         <h2 className="text-xs uppercase tracking-[0.15em] text-ink-faint mb-2 font-sans font-medium">
@@ -401,15 +403,6 @@ export default function PlanPage() {
 function ordinal(n: number): string {
   const s = ["th", "st", "nd", "rd"], v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
-}
-
-function Stat({ label, v, cls = "" }: { label: string; v: number; cls?: string }) {
-  return (
-    <div className="border border-rule bg-paper-raised px-4 py-3">
-      <p className="text-xs text-ink-faint">{label}</p>
-      <p className={`amount text-lg mt-1 ${cls}`}>{formatPaise(v)}</p>
-    </div>
-  );
 }
 
 function CalcLine({

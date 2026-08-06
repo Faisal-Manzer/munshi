@@ -10,6 +10,7 @@ import { Select } from "@/components/select";
 import { TitleInput, useTitleSuggestions } from "@/components/title-input";
 import { DateInput } from "@/components/date-input";
 import { Field } from "@/components/field";
+import { Headline } from "@/components/headline";
 import { InputModal, Modal } from "@/components/modal";
 import { AccountModal, BLOCK_OPTIONS } from "@/components/account-modal";
 import { AccountSheet } from "@/components/account-sheet";
@@ -1350,25 +1351,6 @@ function SplitModal({
         </button>
       </div>
     </Modal>
-  );
-}
-
-function Headline({
-  label, paise, cls = "", incoming = false,
-}: {
-  label: string;
-  paise: number;
-  cls?: string;
-  incoming?: boolean;
-}) {
-  return (
-    <div className="text-right">
-      <p className="text-[10px] uppercase tracking-wider text-ink-faint">{label}</p>
-      <p className={`amount inline-flex items-center gap-0.5 ${cls}`}>
-        {incoming && <ArrowDownLeft size={11} className="text-ledger" />}
-        {formatPaise(paise)}
-      </p>
-    </div>
   );
 }
 
