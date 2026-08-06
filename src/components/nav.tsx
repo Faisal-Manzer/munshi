@@ -19,7 +19,7 @@ export function Nav({ email }: { email: string }) {
   const [privacy, setPrivacy] = useState(false);
 
   useEffect(() => {
-    const on = localStorage.getItem("munshi-privacy") === "1";
+    const on = localStorage.getItem("munshi-privacy") !== "0"; // blurred by default
     setPrivacy(on);
     document.documentElement.classList.toggle("privacy", on);
   }, []);

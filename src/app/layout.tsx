@@ -33,7 +33,14 @@ export default function RootLayout({
       lang="en"
       className={`${instrumentSans.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `if(localStorage.getItem("munshi-privacy")!=="0")document.documentElement.classList.add("privacy")`,
+          }}
+        />
+        {children}
+      </body>
     </html>
   );
 }
