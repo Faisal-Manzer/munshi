@@ -571,25 +571,11 @@ export default function BookPage() {
           <button onClick={() => shiftMonth(1)} disabled={!canNext}
             className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft disabled:opacity-30 disabled:hover:bg-transparent">→</button>
         </div>
-        <div className="flex gap-6 text-sm flex-wrap">
-          <button onClick={() => setDetailFor("liquid")} className="text-right" title="Which accounts make this up?">
-            <Headline label="liquid" paise={outlook.liquidNow} />
-          </button>
-          <button onClick={() => setDetailFor("toPay")} className="text-right" title="What is still going out?">
-            <Headline label="to pay" paise={-outlook.toPay} cls={outlook.toPay > 0 ? "text-debit" : ""} />
-          </button>
-          <button onClick={() => setDetailFor("toReceive")} className="text-right" title="What is still coming in?">
-            <Headline label="to receive" paise={outlook.toReceive} cls="text-ledger" incoming={outlook.toReceive > 0} />
-          </button>
-          <button onClick={() => setLeftOpen(true)} title="How is this calculated?" className="text-right">
-            <Headline label={`${savingsLabel} ⓘ`} paise={outlook.projected}
-              cls={outlook.projected >= 0 ? "text-ledger" : "text-debit"} />
-          </button>
-        </div>
       </div>
 
       {error && <p className="text-sm text-debit border border-debit-soft bg-debit-soft px-3 py-2">{error}</p>}
 
+      <div className="flex items-end justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1.5 border border-rule bg-paper-raised px-2 py-1">
             <Search size={13} className="text-ink-faint shrink-0" />
@@ -620,6 +606,22 @@ export default function BookPage() {
             </button>
           )}
         </div>
+        <div className="flex gap-6 text-sm flex-wrap">
+          <button onClick={() => setDetailFor("liquid")} className="text-right" title="Which accounts make this up?">
+            <Headline label="liquid" paise={outlook.liquidNow} />
+          </button>
+          <button onClick={() => setDetailFor("toPay")} className="text-right" title="What is still going out?">
+            <Headline label="to pay" paise={-outlook.toPay} cls={outlook.toPay > 0 ? "text-debit" : ""} />
+          </button>
+          <button onClick={() => setDetailFor("toReceive")} className="text-right" title="What is still coming in?">
+            <Headline label="to receive" paise={outlook.toReceive} cls="text-ledger" incoming={outlook.toReceive > 0} />
+          </button>
+          <button onClick={() => setLeftOpen(true)} title="How is this calculated?" className="text-right">
+            <Headline label={`${savingsLabel} ⓘ`} paise={outlook.projected}
+              cls={outlook.projected >= 0 ? "text-ledger" : "text-debit"} />
+          </button>
+        </div>
+      </div>
 
       <div className="grid xl:grid-cols-[1fr_310px] gap-5 items-start xl:items-stretch xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]">
         {/* ledger column */}
