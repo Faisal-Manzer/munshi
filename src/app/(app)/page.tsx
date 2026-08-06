@@ -20,9 +20,13 @@ import { subtreeBalance, toISODate } from "@/lib/ledger";
 import {
   cardDueNow as cardDueNowOf,
   cardUnbilled as cardUnbilledOf,
+  isIncomeTemplate,
+  isInternalTemplate,
   liquidNowOf,
   liquidOutlook,
   monthActuals,
+  oneOffAmount,
+  oneOffKind,
   parentCardsOf,
 } from "@/lib/calc";
 import { emiActive, emiInfo, fmtMonth } from "@/lib/emi";
@@ -99,6 +103,7 @@ export default function BookPage() {
   const [reconFor, setReconFor] = useState<Account | null>(null);
   const [addPersonOpen, setAddPersonOpen] = useState(false);
   const [leftOpen, setLeftOpen] = useState(false);
+  const [detailFor, setDetailFor] = useState<"liquid" | "toPay" | "toReceive" | null>(null);
   // folded-in tab features: account CRUD, categories, entity detail, template edit
   const [createAcct, setCreateAcct] = useState<number[] | null>(null);
   const [catOpen, setCatOpen] = useState(false);
@@ -335,6 +340,57 @@ export default function BookPage() {
   const outlook = liquidOutlook(bookA, liquidNow);
   const savingsLabel = isPastMonth ? "savings" : "projected savings";
 
+  // itemized breakdowns behind each headline number — same rules as monthActuals
+  const postedTplIds = new Set(txns.map((x) => x.recurring_template_id).filter(Boolean));
+  const tplUnposted = (isPastMonth ? [] : monthTemplates).filter((t) => !postedTplIds.has(t.id));
+  const pendingByKind = (k: string) =>
+    txns.filter(
+      (x) =>
+        x.status === "pending" &&
+        !x.postings.some((pp) => accountById(accounts, pp.account_id)?.kind === "equity") &&
+        oneOffKind(accounts, x) === k
+    );
+  const detailRows: Record<string, { title: string; rows: { label: string; paise: number }[] }> = {
+    liquid: {
+      title: "Liquid — spendable right now",
+      rows: active
+        .filter((a) => a.is_liquid)
+        .map((a) => ({ label: a.name, paise: balances.get(a.id)?.balance_paise ?? 0 }))
+        .filter((r) => r.paise !== 0),
+    },
+    toPay: {
+      title: "To pay — going out before month end",
+      rows: [
+        ...parentCards
+          .map((c) => ({ label: `${c.name} — card bill`, paise: -(cardDueNow(c) + cardUnbilled(c)) }))
+          .filter((r) => r.paise !== 0),
+        ...tplUnposted
+          .filter((t) =>
+            !isIncomeTemplate(accounts, t) && !isInternalTemplate(accounts, t) &&
+            accountById(accounts, t.from_account_id)?.subtype !== "credit_card")
+          .map((t) => ({ label: `${t.name} — recurring, ${ordinal(t.day_of_month)}`, paise: -t.amount_paise })),
+        ...pendingByKind("out").map((x) => ({ label: `${x.description} — planned, ${fmtDate(x.date)}`, paise: -oneOffAmount(x) })),
+      ],
+    },
+    toReceive: {
+      title: "To receive — coming in before month end",
+      rows: [
+        ...tplUnposted
+          .filter((t) => isIncomeTemplate(accounts, t))
+          .map((t) => ({ label: `${t.name} — ${ordinal(t.day_of_month)}`, paise: t.amount_paise })),
+        ...pendingByKind("in").map((x) => ({ label: `${x.description} — planned, ${fmtDate(x.date)}`, paise: oneOffAmount(x) })),
+        ...(isPastMonth ? [] : monthTemplates)
+          .filter((t) => t.reimburse_account_id && t.reimburse_amount_paise &&
+            (personCredits.get(t.reimburse_account_id) ?? 0) < t.reimburse_amount_paise)
+          .map((t) => ({
+            label: `${accountById(accounts, t.reimburse_account_id)?.name} repays ${t.name}`,
+            paise: t.reimburse_amount_paise ?? 0,
+          })),
+        ...pendingByKind("back").map((x) => ({ label: `${x.description} — ${fmtDate(x.date)}`, paise: oneOffAmount(x) })),
+      ],
+    },
+  };
+
   // ---- actions
   async function postVirtual(t: RecurringTemplate, amountStr: string) {
     const paise = parseRupees(amountStr);
@@ -469,9 +525,15 @@ export default function BookPage() {
             className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft disabled:opacity-30 disabled:hover:bg-transparent">→</button>
         </div>
         <div className="flex gap-6 text-sm flex-wrap">
-          <Headline label="liquid" paise={outlook.liquidNow} />
-          <Headline label="to pay" paise={-outlook.toPay} cls={outlook.toPay > 0 ? "text-debit" : ""} />
-          <Headline label="to receive" paise={outlook.toReceive} cls="text-ledger" incoming={outlook.toReceive > 0} />
+          <button onClick={() => setDetailFor("liquid")} className="text-right" title="Which accounts make this up?">
+            <Headline label="liquid" paise={outlook.liquidNow} />
+          </button>
+          <button onClick={() => setDetailFor("toPay")} className="text-right" title="What is still going out?">
+            <Headline label="to pay" paise={-outlook.toPay} cls={outlook.toPay > 0 ? "text-debit" : ""} />
+          </button>
+          <button onClick={() => setDetailFor("toReceive")} className="text-right" title="What is still coming in?">
+            <Headline label="to receive" paise={outlook.toReceive} cls="text-ledger" incoming={outlook.toReceive > 0} />
+          </button>
           <button onClick={() => setLeftOpen(true)} title="How is this calculated?" className="text-right">
             <Headline label={`${savingsLabel} ⓘ`} paise={outlook.projected}
               cls={outlook.projected >= 0 ? "text-ledger" : "text-debit"} />
@@ -933,6 +995,27 @@ export default function BookPage() {
           </SideBlock>
         </aside>
       </div>
+
+      {detailFor && (
+        <Modal open title={detailRows[detailFor].title} onClose={() => setDetailFor(null)}>
+          <div className="text-sm space-y-1.5">
+            {detailRows[detailFor].rows.map((r, i) => (
+              <div key={i} className="flex items-baseline justify-between gap-4">
+                <p className="text-ink-soft">{r.label}</p>
+                <Amount paise={r.paise} signed={detailFor !== "liquid"} className="whitespace-nowrap" />
+              </div>
+            ))}
+            {detailRows[detailFor].rows.length === 0 && (
+              <p className="text-ink-faint text-sm">Nothing here right now.</p>
+            )}
+            <div className="border-t border-rule-strong pt-2 flex items-baseline justify-between gap-4 font-medium">
+              <p>Total</p>
+              <Amount signed={detailFor !== "liquid"}
+                paise={detailRows[detailFor].rows.reduce((sum, r) => sum + r.paise, 0)} />
+            </div>
+          </div>
+        </Modal>
+      )}
 
       <Modal open={leftOpen} title={`How ${savingsLabel} is calculated`}
         subtitle="Liquid today − what must still go out + what is still to come in" onClose={() => setLeftOpen(false)}>
