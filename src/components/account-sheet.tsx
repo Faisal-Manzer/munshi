@@ -423,7 +423,7 @@ function OutstandingForm({
     const delta = -paise - balance;
     try {
       await postEquityAdjustment(
-        supabase, account.id, delta,
+        supabase, account.ledger_id, account.id, delta,
         `Outstanding set — ${account.name}`, toISODate(new Date())
       );
       onError(null);
@@ -476,6 +476,7 @@ function SettleForm({
     if (!paise || paise <= 0 || !bankId) return;
     try {
       await createEntry(supabase, {
+        ledgerId: account.ledger_id,
         date: toISODate(new Date()),
         description: theyPay
           ? `Received from ${account.name}`

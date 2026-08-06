@@ -43,7 +43,7 @@ function TemplateForm({
   editing: RecurringTemplate | null;
   onSaved: () => void;
 }) {
-  const { supabase } = useLedger();
+  const { supabase, ledgerId } = useLedger();
   const people = accounts.filter((a) => a.subtype === "receivable");
   const [name, setName] = useState(editing?.name ?? "");
   const [kind, setKind] = useState<RecurringKind>(editing?.kind ?? "autodebit_bank");
@@ -106,7 +106,7 @@ function TemplateForm({
     };
     const { error } = editing
       ? await supabase.from("recurring_templates").update(row).eq("id", editing.id)
-      : await supabase.from("recurring_templates").insert(row);
+      : await supabase.from("recurring_templates").insert({ ...row, ledger_id: ledgerId });
     setSaving(false);
     if (error) {
       setErr(error.message);

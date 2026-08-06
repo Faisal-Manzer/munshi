@@ -22,7 +22,7 @@ export function ReconcileModal({
   onDone: () => Promise<unknown>;
   onClose: () => void;
 }) {
-  const { supabase, accounts, balances } = useLedger();
+  const { supabase, ledgerId, accounts, balances } = useLedger();
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -53,13 +53,14 @@ export function ReconcileModal({
     if (!adj) {
       const { data, error } = await supabase
         .from("accounts")
-        .insert({ name: "Adjustments", kind: "expense", subtype: "general_expense" })
+        .insert({ ledger_id: ledgerId, name: "Adjustments", kind: "expense", subtype: "general_expense" })
         .select()
         .single();
       if (error) throw error;
       adj = data as Account;
     }
     await createEntry(supabase, {
+      ledgerId: ledgerId!,
       date: toISODate(new Date()),
       description: `Reconcile — ${account!.name}`,
       status: "done",

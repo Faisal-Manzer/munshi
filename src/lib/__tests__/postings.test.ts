@@ -3,6 +3,7 @@ import { buildPostings, type EntryInput } from "@/lib/postings";
 
 function entry(patch: Partial<EntryInput>): EntryInput {
   return {
+    ledgerId: "l1",
     date: "2026-08-01",
     description: "Test",
     status: "done",

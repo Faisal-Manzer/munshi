@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface EntryInput {
+  ledgerId: string; // which book this entry is written in
   date: string;
   description: string;
   status: "pending" | "done";
@@ -16,7 +17,7 @@ export interface EntryInput {
 
 export function buildPostings(
   txnId: string,
-  e: EntryInput
+  e: Omit<EntryInput, "ledgerId"> // postings inherit the transaction's ledger in the DB
 ): { transaction_id: string; account_id: string; amount_paise: number }[] {
   const reimburse =
     e.reimburseAccountId && e.reimbursePaise && e.reimbursePaise > 0
@@ -39,6 +40,7 @@ export async function createEntry(supabase: SupabaseClient, e: EntryInput) {
   const { data: txn, error } = await supabase
     .from("transactions")
     .insert({
+      ledger_id: e.ledgerId,
       date: e.date,
       description: e.description,
       status: e.status,
@@ -68,6 +70,7 @@ export async function createEntry(supabase: SupabaseClient, e: EntryInput) {
  */
 export async function postEquityAdjustment(
   supabase: SupabaseClient,
+  ledgerId: string,
   accountId: string,
   deltaPaise: number,
   description: string,
@@ -77,13 +80,14 @@ export async function postEquityAdjustment(
   let { data: equity } = await supabase
     .from("accounts")
     .select("*")
+    .eq("ledger_id", ledgerId)
     .eq("subtype", "opening_balance")
     .limit(1)
     .maybeSingle();
   if (!equity) {
     const { data: eq, error: ee } = await supabase
       .from("accounts")
-      .insert({ name: "Opening balances", kind: "equity", subtype: "opening_balance" })
+      .insert({ ledger_id: ledgerId, name: "Opening balances", kind: "equity", subtype: "opening_balance" })
       .select()
       .single();
     if (ee) throw ee;
@@ -91,7 +95,7 @@ export async function postEquityAdjustment(
   }
   const { data: txn, error } = await supabase
     .from("transactions")
-    .insert({ date, description, status: "done" })
+    .insert({ ledger_id: ledgerId, date, description, status: "done" })
     .select()
     .single();
   if (error) throw error;
@@ -109,7 +113,7 @@ export async function postEquityAdjustment(
 export async function rewriteEntry(
   supabase: SupabaseClient,
   txnId: string,
-  e: EntryInput
+  e: Omit<EntryInput, "ledgerId"> // a rewrite never moves an entry between books
 ) {
   const { error } = await supabase
     .from("transactions")

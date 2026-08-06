@@ -34,7 +34,7 @@ function fmtDate(iso: string) {
 }
 
 export default function PlanPage() {
-  const { supabase, accounts, balances, cycles, loading, reload } = useLedger();
+  const { supabase, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [allOneOffs, setAllOneOffs] = useState<Txn[]>([]);
   const [doneCounts, setDoneCounts] = useState<Map<string, number>>(new Map());
@@ -49,15 +49,22 @@ export default function PlanPage() {
   const [month, setMonth] = useState(nextMonth);
 
   const load = useCallback(async () => {
+    if (!ledgerId) return;
     // pending one-offs from next month through the viewed month — the whole
     // stretch feeds the projected-liquid accumulation, not just the viewed month
     const start = `${nextMonth}-01`;
     const end = toISODate(new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1));
     const [tRes, oRes, cRes] = await Promise.all([
-      supabase.from("recurring_templates").select("*").eq("active", true).order("day_of_month"),
+      supabase
+        .from("recurring_templates")
+        .select("*")
+        .eq("ledger_id", ledgerId)
+        .eq("active", true)
+        .order("day_of_month"),
       supabase
         .from("transactions")
         .select("*, postings(*)")
+        .eq("ledger_id", ledgerId)
         .is("recurring_template_id", null)
         .eq("status", "pending")
         .gte("date", start)
@@ -66,6 +73,7 @@ export default function PlanPage() {
       supabase
         .from("transactions")
         .select("recurring_template_id")
+        .eq("ledger_id", ledgerId)
         .not("recurring_template_id", "is", null)
         .eq("status", "done"),
     ]);
@@ -80,7 +88,7 @@ export default function PlanPage() {
       counts.set(r.recurring_template_id, (counts.get(r.recurring_template_id) ?? 0) + 1);
     }
     setDoneCounts(counts);
-  }, [supabase, month, nextMonth]);
+  }, [supabase, ledgerId, month, nextMonth]);
 
   useEffect(() => {
     load();
@@ -103,9 +111,9 @@ export default function PlanPage() {
   const projectedLiquid = projectedLiquidThrough(ctx, liquidNow, nextMonth, month);
 
   // ---- one-off actions
-  async function addOneOff(e: EntryInput) {
+  async function addOneOff(e: Omit<EntryInput, "ledgerId">) {
     try {
-      await createEntry(supabase, { ...e, status: "pending" });
+      await createEntry(supabase, { ...e, ledgerId: ledgerId!, status: "pending" });
       setError(null);
       await Promise.all([load(), reload()]);
       return true;
@@ -425,7 +433,7 @@ function OneOffAddRow({
 }: {
   month: string;
   accounts: Account[];
-  onCreate: (e: EntryInput) => Promise<boolean>;
+  onCreate: (e: Omit<EntryInput, "ledgerId">) => Promise<boolean>;
   supabase: ReturnType<typeof useLedger>["supabase"];
 }) {
   const [date, setDate] = useState(`${month}-01`);

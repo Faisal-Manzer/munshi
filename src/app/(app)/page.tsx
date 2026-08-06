@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLedger, accountById } from "@/lib/use-ledger";
+import { useActiveLedger } from "@/lib/ledger-context";
 import { createEntry, rewriteEntry, type EntryInput } from "@/lib/postings";
 import { Amount } from "@/components/amount";
 import { AccountSelect, NEW_CATEGORY, accountGroups } from "@/components/account-select";
@@ -92,7 +93,7 @@ function fmtDate(iso: string) {
 }
 
 export default function BookPage() {
-  const { supabase, accounts, balances, cycles, loading, reload } = useLedger();
+  const { supabase, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
   const [txns, setTxns] = useState<(Transaction & { postings: Posting[] })[]>([]);
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [month, setMonth] = useState(() => toISODate(new Date()).slice(0, 7));
@@ -142,17 +143,23 @@ export default function BookPage() {
   );
 
   const load = useCallback(async () => {
+    if (!ledgerId) return;
     const start = `${month}-01`;
     const end = toISODate(new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1));
     const [xRes, tRes] = await Promise.all([
       supabase
         .from("transactions")
         .select("*, postings(*)")
+        .eq("ledger_id", ledgerId)
         .gte("date", start)
         .lt("date", end)
         .order("date")
         .order("created_at"),
-      supabase.from("recurring_templates").select("*").eq("active", true),
+      supabase
+        .from("recurring_templates")
+        .select("*")
+        .eq("ledger_id", ledgerId)
+        .eq("active", true),
     ]);
     if (xRes.error || tRes.error) {
       setError(xRes.error?.message ?? tRes.error?.message ?? "load failed");
@@ -160,7 +167,7 @@ export default function BookPage() {
     }
     setTxns(xRes.data as (Transaction & { postings: Posting[] })[]);
     setTemplates(tRes.data as RecurringTemplate[]);
-  }, [supabase, month]);
+  }, [supabase, ledgerId, month]);
 
   useEffect(() => {
     load();
@@ -168,9 +175,11 @@ export default function BookPage() {
 
   // earliest logged month bounds backward navigation — no empty pre-history months
   useEffect(() => {
+    if (!ledgerId) return;
     supabase
       .from("transactions")
       .select("date")
+      .eq("ledger_id", ledgerId)
       .order("date")
       .limit(1)
       .then(({ data }) => {
@@ -433,6 +442,7 @@ export default function BookPage() {
     const scale = paise / t.amount_paise;
     try {
       await createEntry(supabase, {
+        ledgerId: ledgerId!,
         date: today,
         description: t.name,
         status: "done",
@@ -464,6 +474,7 @@ export default function BookPage() {
     if (!paise || paise <= 0 || !receiveBank) return;
     try {
       await createEntry(supabase, {
+        ledgerId: ledgerId!,
         date: today,
         description: receiveModal.label,
         status: "done",
@@ -482,6 +493,7 @@ export default function BookPage() {
   async function addPerson(name: string) {
     if (!name.trim()) return;
     const { error: e } = await supabase.from("accounts").insert({
+      ledger_id: ledgerId,
       name: name.trim(),
       kind: "asset",
       subtype: "receivable",
@@ -1189,6 +1201,7 @@ export default function BookPage() {
           if (!coverFor?.fromId) return;
           try {
             await createEntry(supabase, {
+              ledgerId: ledgerId!,
               date: today,
               description: `Cover: ${coverFor.txn.description}`,
               status: "done",
@@ -1607,6 +1620,7 @@ function QuickAddRow({
   onAdded: (txnId: string) => void;
   onError: (m: string | null) => void;
 }) {
+  const { ledgerId } = useActiveLedger();
   const [date, setDate] = useState(() => toISODate(new Date()));
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
@@ -1632,7 +1646,7 @@ function QuickAddRow({
     if (!name.trim()) return;
     const { data, error } = await supabase
       .from("accounts")
-      .insert({ name: name.trim(), kind: "expense", subtype: "general_expense" })
+      .insert({ ledger_id: ledgerId, name: name.trim(), kind: "expense", subtype: "general_expense" })
       .select()
       .single();
     if (error) {
@@ -1648,6 +1662,7 @@ function QuickAddRow({
     if (!desc.trim() || !fromId || !paise || paise <= 0) return;
     try {
       const txn = await createEntry(supabase, {
+        ledgerId: ledgerId!,
         date,
         description: desc.trim(),
         status: isPlanned ? "pending" : "done",

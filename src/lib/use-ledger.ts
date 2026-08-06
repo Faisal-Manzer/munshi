@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useActiveLedger } from "@/lib/ledger-context";
 import type { Account, AccountBalance, CardCycle } from "@/lib/types";
 
-/** Loads the account tree + balances; shared by every page. */
+/** Loads the active ledger's account tree + balances; shared by every page. */
 export function useLedger() {
   const supabase = useMemo(() => createClient(), []);
+  const { ledgerId, ledger, ledgers, switchLedger } = useActiveLedger();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [balances, setBalances] = useState<Map<string, AccountBalance>>(
     new Map()
@@ -16,14 +18,16 @@ export function useLedger() {
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
+    if (!ledgerId) return;
     const [accRes, balRes, cycRes] = await Promise.all([
       supabase
         .from("accounts")
         .select("*")
+        .eq("ledger_id", ledgerId)
         .order("sort_order")
         .order("created_at"),
-      supabase.from("account_balances").select("*"),
-      supabase.from("card_cycle_balances").select("*"),
+      supabase.from("account_balances").select("*").eq("ledger_id", ledgerId),
+      supabase.from("card_cycle_balances").select("*").eq("ledger_id", ledgerId),
     ]);
     if (accRes.error || balRes.error || cycRes.error) {
       setError(
@@ -45,13 +49,26 @@ export function useLedger() {
       setError(null);
     }
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, ledgerId]);
 
   useEffect(() => {
+    setLoading(true); // switching books: don't show the old one's numbers
     reload();
   }, [reload]);
 
-  return { supabase, accounts, balances, cycles, loading, error, reload };
+  return {
+    supabase,
+    ledgerId,
+    ledger,
+    ledgers,
+    switchLedger,
+    accounts,
+    balances,
+    cycles,
+    loading,
+    error,
+    reload,
+  };
 }
 
 export { accountById } from "./calc";

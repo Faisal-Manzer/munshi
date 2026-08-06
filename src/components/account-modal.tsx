@@ -46,7 +46,7 @@ export function AccountModal({
   onDone: () => Promise<unknown>;
   onClose: () => void;
 }) {
-  const { supabase, accounts } = useLedger();
+  const { supabase, ledgerId, accounts } = useLedger();
   const options = (optionIdxs ?? NEW_OPTIONS.map((_, i) => i)).map((i) => NEW_OPTIONS[i]);
   const [optIdx, setOptIdx] = useState(0);
   const opt = options[Math.min(optIdx, options.length - 1)];
@@ -87,6 +87,7 @@ export function AccountModal({
     const { data: acc, error: e1 } = await supabase
       .from("accounts")
       .insert({
+        ledger_id: ledgerId,
         name: name.trim(),
         kind: opt.kind,
         subtype: opt.subtype,
@@ -112,7 +113,7 @@ export function AccountModal({
       if (!equity) {
         const { data: eq } = await supabase
           .from("accounts")
-          .insert({ name: "Opening balances", kind: "equity", subtype: "opening_balance" })
+          .insert({ ledger_id: ledgerId, name: "Opening balances", kind: "equity", subtype: "opening_balance" })
           .select()
           .single();
         equity = eq as Account;
@@ -121,6 +122,7 @@ export function AccountModal({
       const { data: txn } = await supabase
         .from("transactions")
         .insert({
+          ledger_id: ledgerId,
           date: toISODate(new Date()),
           description: `Opening balance — ${name.trim()}`,
           status: "done",
