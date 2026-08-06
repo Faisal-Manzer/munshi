@@ -239,11 +239,33 @@ function LedgerSwitcher() {
   );
 }
 
-const ROLE_LABEL: Record<LedgerRole, string> = {
-  owner: "owner — full control, manages members",
-  editor: "editor — writes entries",
-  viewer: "viewer — read only",
+const ROLE_HELP: Record<LedgerRole, string> = {
+  owner: "Full control — entries, settings, and who has access",
+  editor: "Can add and edit entries; can\u2019t manage people",
+  viewer: "Can look at everything; can\u2019t change anything",
 };
+
+function RoleSelect({
+  value, onChange, disabled,
+}: {
+  value: LedgerRole;
+  onChange: (r: LedgerRole) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value as LedgerRole)}
+      title={ROLE_HELP[value]}
+      className="text-xs text-ink-soft bg-transparent border border-transparent hover:border-rule px-1 py-0.5 disabled:opacity-100 disabled:appearance-none"
+    >
+      <option value="owner">owner</option>
+      <option value="editor">editor</option>
+      <option value="viewer">viewer</option>
+    </select>
+  );
+}
 
 function MembersModal({ email, onClose }: { email: string; onClose: () => void }) {
   const [supabase] = useState(() => createClient());
@@ -251,10 +273,11 @@ function MembersModal({ email, onClose }: { email: string; onClose: () => void }
   const [members, setMembers] = useState<LedgerMember[] | null>(null);
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState<LedgerRole>("editor");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const me = members?.find((m) => m.email === email.toLowerCase());
-  const isOwner = me?.role === "owner";
+  const me = email.toLowerCase();
+  const isOwner = members?.some((m) => m.email === me && m.role === "owner") ?? false;
 
   async function load() {
     const { data, error: e } = await supabase.rpc("ledger_members_list", { l: ledgerId });
@@ -267,96 +290,126 @@ function MembersModal({ email, onClose }: { email: string; onClose: () => void }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ledgerId]);
 
-  async function add() {
+  async function setRole(target: string, role: LedgerRole) {
+    setBusy(true);
+    const { error: e } = await supabase.rpc("ledger_member_add", {
+      l: ledgerId, new_email: target, new_role: role,
+    });
+    setBusy(false);
+    if (e) { setError(e.message); return; }
+    setError(null);
+    await load();
+  }
+
+  async function invite() {
     const v = newEmail.trim().toLowerCase();
     if (!v) return;
-    const { error: e } = await supabase.rpc("ledger_member_add", {
-      l: ledgerId,
-      new_email: v,
-      new_role: newRole,
-    });
-    if (e) {
-      setError(e.message);
+    if (members?.some((m) => m.email === v)) {
+      setError(`${v} already has access.`);
       return;
     }
+    setBusy(true);
+    const { error: e } = await supabase.rpc("ledger_member_add", {
+      l: ledgerId, new_email: v, new_role: newRole,
+    });
+    setBusy(false);
+    if (e) { setError(e.message); return; }
     setError(null);
     setNewEmail("");
     await load();
   }
 
   async function remove(m: string) {
-    if (!confirm(`Remove ${m}? They lose access to "${ledger?.name}" immediately.`)) return;
-    const { error: e } = await supabase.rpc("ledger_member_remove", {
-      l: ledgerId,
-      old_email: m,
-    });
-    if (e) {
-      setError(e.message);
-      return;
-    }
+    if (!confirm(`Remove ${m} from \u201c${ledger?.name}\u201d? They lose access immediately.`)) return;
+    setBusy(true);
+    const { error: e } = await supabase.rpc("ledger_member_remove", { l: ledgerId, old_email: m });
+    setBusy(false);
+    if (e) { setError(e.message); return; }
     setError(null);
     await load();
   }
 
   return (
-    <Modal open title={`Members — ${ledger?.name ?? ""}`}
-      subtitle="Everyone here signs in with Google and sees this ledger" onClose={onClose}>
-      {members === null && !error && <p className="text-sm text-ink-faint">Loading…</p>}
-      {members !== null && members.length > 0 && (
-        <div className="divide-y divide-rule/60 mb-3">
-          {members.map((m) => (
-            <div key={m.email} className="flex items-center justify-between gap-2 py-1.5">
-              <p className="text-sm">
-                {m.email}
-                <span className="text-xs text-ink-faint">
-                  {" "}· {m.role}
-                  {m.email === email.toLowerCase() && " · you"}
-                </span>
-              </p>
-              {isOwner && m.email !== email.toLowerCase() && (
-                <button onClick={() => remove(m.email)} title={`Remove ${m.email}`}
-                  className="text-ink-faint hover:text-debit p-0.5">
-                  <X size={13} />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-      {error && <p className="text-sm text-debit mb-2">{error}</p>}
-      {isOwner && (
-        <div className="space-y-2">
+    <Modal open title={`Share \u201c${ledger?.name ?? ""}\u201d`}
+      subtitle="Everyone below signs in with Google and opens this exact book"
+      onClose={onClose}>
+      <div className="space-y-4">
+        {isOwner && (
           <div className="flex gap-2">
             <input
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && add()}
-              placeholder="another@gmail.com"
-              className="flex-1 border border-rule px-3 py-2 text-sm bg-paper-raised"
+              onKeyDown={(e) => e.key === "Enter" && invite()}
+              placeholder="Add people by email\u2026"
+              autoFocus
+              className="flex-1 min-w-0 border border-rule px-3 py-2 text-sm bg-paper-raised"
             />
             <select
               value={newRole}
               onChange={(e) => setNewRole(e.target.value as LedgerRole)}
+              title={ROLE_HELP[newRole]}
               className="border border-rule px-2 py-2 text-sm bg-paper-raised"
-              title={ROLE_LABEL[newRole]}
             >
               <option value="editor">editor</option>
               <option value="viewer">viewer</option>
               <option value="owner">owner</option>
             </select>
-            <button onClick={add}
-              className="text-sm bg-ledger text-paper-raised px-4 py-1.5 hover:opacity-90">
-              Add
+            <button onClick={invite} disabled={busy || !newEmail.trim()}
+              className="text-sm bg-ledger text-paper-raised px-4 py-1.5 hover:opacity-90 disabled:opacity-50">
+              Invite
             </button>
           </div>
-          <p className="text-[11px] text-ink-faint">{ROLE_LABEL[newRole]}</p>
-        </div>
-      )}
-      {members !== null && !isOwner && (
-        <p className="text-xs text-ink-faint">
-          Only an owner can add or remove members.
-        </p>
-      )}
+        )}
+        {isOwner && <p className="text-[11px] text-ink-faint -mt-2">{ROLE_HELP[newRole]}</p>}
+
+        {members === null && !error && <p className="text-sm text-ink-faint">Loading\u2026</p>}
+        {members !== null && (
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-ink-faint mb-1">
+              Who has access
+            </p>
+            <div className="divide-y divide-rule/60 border-y border-rule/60">
+              {members.map((m) => {
+                const self = m.email === me;
+                return (
+                  <div key={m.email} className="flex items-center gap-3 py-2">
+                    <span className="w-7 h-7 shrink-0 rounded-full bg-ledger-soft text-ledger grid place-items-center text-xs font-medium uppercase">
+                      {m.email[0]}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm truncate">
+                        {m.email}
+                        {self && <span className="text-xs text-ink-faint"> \u00b7 you</span>}
+                      </p>
+                      <p className="text-[11px] text-ink-faint">{ROLE_HELP[m.role]}</p>
+                    </div>
+                    {isOwner && !self ? (
+                      <>
+                        <RoleSelect value={m.role} disabled={busy}
+                          onChange={(r) => setRole(m.email, r)} />
+                        <button onClick={() => remove(m.email)} disabled={busy}
+                          title={`Remove ${m.email}`}
+                          className="text-ink-faint hover:text-debit p-0.5">
+                          <X size={13} />
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-ink-soft">{m.role}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {error && <p className="text-sm text-debit">{error}</p>}
+        {members !== null && !isOwner && (
+          <p className="text-xs text-ink-faint">
+            Only an owner can invite, change roles, or remove people.
+          </p>
+        )}
+      </div>
     </Modal>
   );
 }

@@ -403,6 +403,15 @@ begin
       raise exception 'expected self-removal refusal, got: %', sqlerrm;
     end if;
   end;
+  -- changing your own role refused (would orphan the book)
+  begin
+    perform ledger_member_add('dddddddd-0000-4000-8000-000000000001', 'munshi-dbtest-a@example.invalid', 'viewer');
+    raise exception 'UNREACHABLE';
+  exception when others then
+    if sqlerrm not like '%cannot change your own role%' then
+      raise exception 'expected self-role refusal, got: %', sqlerrm;
+    end if;
+  end;
 end $$;
 
 do $$ begin perform set_config('request.jwt.claims',
