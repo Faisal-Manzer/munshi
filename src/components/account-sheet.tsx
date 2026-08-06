@@ -274,7 +274,7 @@ function SheetHeader({
           )}
         </p>
       </div>
-      <button onClick={onClose} aria-label="Close" className="text-ink-faint hover:text-ink p-1">
+      <button onClick={onClose} aria-label="Close" title="Close" className="text-ink-faint hover:text-ink p-1">
         <X size={16} />
       </button>
     </div>

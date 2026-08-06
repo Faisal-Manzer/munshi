@@ -572,7 +572,7 @@ export default function BookPage() {
               placeholder="Search entries…"
               className="text-sm bg-transparent w-44" />
             {query && (
-              <button onClick={() => setQuery("")} aria-label="Clear search"
+              <button onClick={() => setQuery("")} aria-label="Clear search" title="Clear search"
                 className="text-ink-faint hover:text-ink"><X size={12} /></button>
             )}
           </div>
@@ -811,6 +811,7 @@ export default function BookPage() {
                       <span className="flex items-center gap-1">
                         {envs.length > 0 && (
                           <button onClick={() => toggleTile(b.id)} aria-label={`Toggle ${b.name} breakdown`}
+                            title={`Show/hide ${b.name} breakdown`}
                             className="text-ink-faint hover:text-ledger -ml-1">
                             {openTiles.has(b.id) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                           </button>
@@ -865,6 +866,7 @@ export default function BookPage() {
                     <span className="flex items-center gap-1">
                       {subs.length > 0 && (
                         <button onClick={() => toggleTile(c.id)} aria-label={`Toggle ${c.name} breakdown`}
+                          title={`Show/hide ${c.name} breakdown`}
                           className="text-ink-faint hover:text-ledger -ml-1">
                           {openTiles.has(c.id) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                         </button>
@@ -1454,7 +1456,8 @@ function TxnEditRow({
           <td className="px-2 py-1.5"></td>
           <td className="px-2 py-1.5 text-xs text-ink-faint">{t.notes ?? ""}</td>
           <td className="px-2 py-1.5 text-right">
-            <button onClick={onDelete} className="text-ink-faint hover:text-debit">×</button>
+            <button onClick={onDelete} title="Delete entry" aria-label="Delete entry"
+              className="text-ink-faint hover:text-debit">×</button>
           </td>
         </tr>
         {expanded &&
@@ -1538,7 +1541,9 @@ function TxnEditRow({
           className="text-xs text-ink-soft" />
       </td>
       <td className="px-2 py-1.5 text-right whitespace-nowrap">
-        {t.recurring_template_id && <span className="text-xs text-ledger mr-1">✓</span>}
+        {t.recurring_template_id && (
+          <span className="text-xs text-ledger mr-1" title="Posted from a recurring item">✓</span>
+        )}
         {pending ? (
           <button onClick={() => onPatch(t.id, { status: "done", date: today })}
             className="text-xs text-ledger hover:underline mr-1">paid</button>
@@ -1560,7 +1565,8 @@ function TxnEditRow({
             <ArrowLeftRight size={12} />
           </IconBtn>
         )}
-        <button onClick={onDelete} className="text-ink-faint hover:text-debit ml-1">×</button>
+        <button onClick={onDelete} title="Delete entry" aria-label="Delete entry"
+          className="text-ink-faint hover:text-debit ml-1">×</button>
       </td>
     </tr>
   );

@@ -257,7 +257,7 @@ export default function PlanPage() {
             placeholder="Search plan…"
             className="text-sm bg-transparent w-44" />
           {query && (
-            <button onClick={() => setQuery("")} aria-label="Clear search"
+            <button onClick={() => setQuery("")} aria-label="Clear search" title="Clear search"
               className="text-ink-faint hover:text-ink"><X size={12} /></button>
           )}
         </div>
@@ -656,7 +656,8 @@ function OneOffRow({
           className="text-xs text-ink-soft" />
       </td>
       <td className="px-2 py-1.5 text-right">
-        <button onClick={onDelete} className="text-ink-faint hover:text-debit">×</button>
+        <button onClick={onDelete} title="Delete planned one-off" aria-label="Delete planned one-off"
+          className="text-ink-faint hover:text-debit">×</button>
       </td>
     </tr>
   );
