@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   accountById,
   cardDueNow,
+  liquidOutlook,
   monthActuals,
   cardPlansFor,
   cardUnbilled,
@@ -532,6 +533,31 @@ describe("monthActuals", () => {
         { ...done, recurring_template_id: "rentT" }),
     ], [rentT], 0);
     expect(after.projectedSavings).toBe(before.projectedSavings);
+  });
+});
+
+describe("liquidOutlook", () => {
+  it("projects month-end liquid from what is still to land", () => {
+    const a = monthActuals(accounts, [], [salaryT, rentT], 20000);
+    // toPay = card 20000 + rent 30000; toReceive = salary 100000
+    const o = liquidOutlook(a, 194_00);
+    expect(o.toPay).toBe(50000);
+    expect(o.toReceive).toBe(100000);
+    expect(o.projected).toBe(194_00 - 50000 + 100000);
+  });
+
+  it("does not double-count what already happened — it is inside liquid", () => {
+    const done = { status: "done" as const };
+    const before = liquidOutlook(monthActuals(accounts, [], [rentT], 0), 100000);
+    // paying rent moves 30000 out of liquid AND out of toPay — projection unchanged
+    const after = liquidOutlook(
+      monthActuals(accounts, [
+        txn("2026-08-03", [["bank", -30000], ["expense", 30000]],
+          { ...done, recurring_template_id: "rentT" }),
+      ], [rentT], 0),
+      100000 - 30000
+    );
+    expect(after.projected).toBe(before.projected);
   });
 });
 

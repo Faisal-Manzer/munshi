@@ -335,6 +335,26 @@ export function monthActuals(
   return a;
 }
 
+// ---- liquidity outlook -------------------------------------------------------
+
+export interface LiquidOutlook {
+  liquidNow: number;
+  toPay: number; // card owed + remaining cash commitments + planned spends
+  toReceive: number; // income still to come + repayments expected
+  projected: number; // liquid at month end if everything known lands
+}
+
+/**
+ * The Book's headline, anchored in liquidity: everything that already
+ * happened is inside liquidNow, so projected = liquid − toPay + toReceive
+ * with no flow double-counting.
+ */
+export function liquidOutlook(a: MonthActuals, liquidNow: number): LiquidOutlook {
+  const toPay = a.cardToPay + a.stillToGo;
+  const toReceive = a.incomeToCome + a.comingBack;
+  return { liquidNow, toPay, toReceive, projected: liquidNow - toPay + toReceive };
+}
+
 /** Sum of is_liquid account balances. */
 export function liquidNowOf(
   active: Account[],

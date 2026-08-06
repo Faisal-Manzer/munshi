@@ -21,6 +21,7 @@ import {
   cardDueNow as cardDueNowOf,
   cardUnbilled as cardUnbilledOf,
   liquidNowOf,
+  liquidOutlook,
   monthActuals,
   parentCardsOf,
 } from "@/lib/calc";
@@ -331,6 +332,7 @@ export default function BookPage() {
   // actuals + remaining commitments — a past month has nothing "to come"
   const bookA = monthActuals(accounts, txns, isPastMonth ? [] : monthTemplates, totalCardOwed);
   const liquidNow = liquidNowOf(active, balances);
+  const outlook = liquidOutlook(bookA, liquidNow);
   const savingsLabel = isPastMonth ? "savings" : "projected savings";
 
   // ---- actions
@@ -466,18 +468,14 @@ export default function BookPage() {
           <button onClick={() => shiftMonth(1)} disabled={!canNext}
             className="border border-rule px-2 py-1 text-sm hover:bg-ledger-soft disabled:opacity-30 disabled:hover:bg-transparent">→</button>
         </div>
-        <div className="flex gap-5 text-sm flex-wrap">
-          <Headline label="received" paise={bookA.received} cls="text-ledger" />
-          <Headline label="spent" paise={bookA.spent} cls={bookA.spent > 0 ? "text-debit" : ""} />
-          {!isPastMonth && <Headline label="still to go" paise={bookA.stillToGo} />}
-          <Headline label="card owed" paise={totalCardOwed} cls={totalCardOwed > 0 ? "text-debit" : ""} />
-          {!isPastMonth && <Headline label="coming back" paise={bookA.comingBack} cls="text-ledger" />}
-          <Headline label="liquid now" paise={liquidNow} />
+        <div className="flex gap-6 text-sm flex-wrap">
+          <Headline label="liquid" paise={outlook.liquidNow} />
+          <Headline label="to pay" paise={-outlook.toPay} cls={outlook.toPay > 0 ? "text-debit" : ""} />
+          <Headline label="to receive" paise={outlook.toReceive} cls="text-ledger" incoming={outlook.toReceive > 0} />
           <button onClick={() => setLeftOpen(true)} title="How is this calculated?" className="text-right">
-            <Headline label={`${savingsLabel} ⓘ`} paise={bookA.projectedSavings}
-              cls={bookA.projectedSavings >= 0 ? "text-ledger" : "text-debit"} />
+            <Headline label={`${savingsLabel} ⓘ`} paise={outlook.projected}
+              cls={outlook.projected >= 0 ? "text-ledger" : "text-debit"} />
           </button>
-          {avoidable > 0 && <Headline label="avoidable" paise={avoidable} cls="text-pending" />}
         </div>
       </div>
 
@@ -937,30 +935,29 @@ export default function BookPage() {
       </div>
 
       <Modal open={leftOpen} title={`How ${savingsLabel} is calculated`}
-        subtitle="What already happened + what is still known to come" onClose={() => setLeftOpen(false)}>
+        subtitle="Liquid today − what must still go out + what is still to come in" onClose={() => setLeftOpen(false)}>
         <div className="text-sm space-y-2">
-          <CalcLine label="Received — income already in" paise={bookA.received} sign="+" />
-          {bookA.incomeToCome > 0 && (
-            <CalcLine label="Still to come — income not yet landed" paise={bookA.incomeToCome} sign="+" />
-          )}
-          <CalcLine label="Spent — cash already out, incl. card bills paid and lends" paise={bookA.spent} sign="−" />
+          <CalcLine label="Liquid now — spendable accounts" paise={outlook.liquidNow} sign="" bold />
+          <CalcLine label={`Card owed — due ${formatPaise(totalDue)} now + ${formatPaise(totalCardOwed - totalDue)} unbilled`}
+            paise={bookA.cardToPay} sign="−" />
           {bookA.stillToGo > 0 && (
-            <CalcLine label="Still to go — unposted recurring + planned spends" paise={bookA.stillToGo} sign="−" />
+            <CalcLine label="Commitments to go — unposted recurring + planned spends" paise={bookA.stillToGo} sign="−" />
           )}
-          <CalcLine label="Card owed — outstanding you'll clear via bills (swipes live here, not in Spent)" paise={totalCardOwed} sign="−" />
-          {bookA.receivedBack > 0 && (
-            <CalcLine label="Received back — repayments already in" paise={bookA.receivedBack} sign="+" />
+          {bookA.incomeToCome > 0 && (
+            <CalcLine label="Income to come" paise={bookA.incomeToCome} sign="+" />
           )}
           {bookA.comingBack > 0 && (
-            <CalcLine label="Coming back — repayments still expected" paise={bookA.comingBack} sign="+" />
+            <CalcLine label="Repayments expected" paise={bookA.comingBack} sign="+" />
           )}
           <div className="border-t border-rule-strong pt-2">
-            <CalcLine label={savingsLabel[0].toUpperCase() + savingsLabel.slice(1)}
-              paise={bookA.projectedSavings} sign="=" bold />
+            <CalcLine label="Projected liquid at month end" paise={outlook.projected} sign="=" bold />
           </div>
           <p className="text-xs text-ink-faint pt-1">
-            This number falls as you log real spends — it is the month&apos;s
-            flow, not a bank balance. Liquid right now: {formatPaise(liquidNow)}.
+            Everything already received or spent is inside today&apos;s liquid
+            balance — nothing is counted twice. This month so far:
+            received {formatPaise(bookA.received + bookA.receivedBack)},
+            spent {formatPaise(bookA.spent)}
+            {avoidable > 0 && <>, of which {formatPaise(avoidable)} was tagged avoidable</>}.
           </p>
         </div>
       </Modal>
@@ -1222,11 +1219,21 @@ function SplitModal({
   );
 }
 
-function Headline({ label, paise, cls = "" }: { label: string; paise: number; cls?: string }) {
+function Headline({
+  label, paise, cls = "", incoming = false,
+}: {
+  label: string;
+  paise: number;
+  cls?: string;
+  incoming?: boolean;
+}) {
   return (
     <div className="text-right">
       <p className="text-[10px] uppercase tracking-wider text-ink-faint">{label}</p>
-      <p className={`amount ${cls}`}>{formatPaise(paise)}</p>
+      <p className={`amount inline-flex items-center gap-0.5 ${cls}`}>
+        {incoming && <ArrowDownLeft size={11} className="text-ledger" />}
+        {formatPaise(paise)}
+      </p>
     </div>
   );
 }
