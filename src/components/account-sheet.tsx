@@ -126,7 +126,7 @@ export function AccountSheet({
   const isLoan = account?.subtype === "loan";
   const isParentCard = account?.subtype === "credit_card" && account.parent_id === null;
   const isReconcilable = account
-    ? ["bank", "cash", "envelope", "investment", "credit_card", "loan"].includes(account.subtype)
+    ? ["bank", "cash", "envelope", "investment", "credit_card", "loan", "receivable"].includes(account.subtype)
     : false;
   const children = account ? active.filter((a) => a.parent_id === account.id) : [];
 

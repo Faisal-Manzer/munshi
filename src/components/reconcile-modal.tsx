@@ -26,15 +26,21 @@ export function ReconcileModal({
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // people can swing either way, so the direction is picked, not signed
+  const [owesMe, setOwesMe] = useState(true);
 
+  const bookSign = account ? balances.get(account.id)?.balance_paise ?? 0 : 0;
   useEffect(() => {
     setValue("");
     setErr(null);
+    setOwesMe(bookSign >= 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account?.id]);
 
   if (!account) return null;
 
   const isLiability = account.kind === "liability";
+  const isPerson = account.subtype === "receivable";
   // banks fold in their envelopes; the bank app shows the whole pot
   const rawBook = ["bank", "credit_card"].includes(account.subtype)
     ? subtreeBalance(accounts, balances, account.id)
@@ -42,8 +48,15 @@ export function ReconcileModal({
   const book = displayBalance(account, rawBook); // liabilities read positive-owed
 
   const typed = parseRupees(value);
-  // target ledger balance: liabilities store owed as negative
-  const target = typed === null ? null : isLiability ? -typed : typed;
+  // target ledger balance: liabilities store owed as negative; a person is an
+  // asset that goes negative when the debt runs the other way
+  const target = typed === null
+    ? null
+    : isLiability
+      ? -typed
+      : isPerson
+        ? (owesMe ? Math.abs(typed) : -Math.abs(typed))
+        : typed;
   const delta = target === null ? null : target - rawBook;
 
   async function postAdjustment(deltaPaise: number) {
@@ -98,19 +111,42 @@ export function ReconcileModal({
 
   return (
     <Modal open title={`Reconcile ${account.name}`}
-      subtitle="Match the books to the real-world balance" onClose={onClose}>
+      subtitle={isPerson
+        ? "Agree the number with them, then close the gap"
+        : "Match the books to the real-world balance"} onClose={onClose}>
       <div className="space-y-3">
         <div className="flex items-baseline justify-between text-sm">
-          <span className="text-ink-soft">{isLiability ? "Book says you owe" : "Book balance"}</span>
-          <span className="amount">{formatPaise(book)}</span>
+          <span className="text-ink-soft">
+            {isLiability ? "Book says you owe"
+              : isPerson ? (book >= 0 ? "Book says they owe you" : "Book says you owe them")
+              : "Book balance"}
+          </span>
+          <span className="amount">{formatPaise(isPerson ? Math.abs(book) : book)}</span>
         </div>
         <p className="text-[11px] text-ink-faint -mt-2">
           {lastRec ? `Last reconciled ${lastRec}` : "Never reconciled"}
         </p>
+        {isPerson && (
+          <div className="flex gap-1 text-xs">
+            {([true, false] as const).map((v) => (
+              <button key={String(v)} type="button" onClick={() => setOwesMe(v)}
+                className={`px-2.5 py-1 border ${owesMe === v
+                  ? "border-ledger text-ledger bg-ledger-soft"
+                  : "border-rule text-ink-soft hover:text-ink"}`}>
+                {v ? "They owe me" : "I owe them"}
+              </button>
+            ))}
+          </div>
+        )}
         <Field
           label={isLiability
             ? "Outstanding in the card/loan app (₹)"
-            : "Balance in the bank app (₹)"}>
+            : isPerson
+              ? `What ${owesMe ? "they actually owe you" : "you actually owe them"} today (₹)`
+              : "Balance in the bank app (₹)"}
+          hint={isPerson
+            ? "Settle the number with them, then post the gap as an adjustment"
+            : undefined}>
           <input value={value} onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && save(true)}
             inputMode="decimal" autoFocus placeholder="0"
@@ -120,9 +156,13 @@ export function ReconcileModal({
           <p className="text-xs text-ink-soft border border-rule bg-paper px-3 py-2">
             {delta < 0
               ? <>Book is <span className="amount amount-inline">{formatPaise(Math.abs(delta))}</span> higher —
-                  something {isLiability ? "was over-logged" : "left this account unlogged"}.</>
+                  something {isLiability ? "was over-logged"
+                    : isPerson ? "they paid back wasn't logged"
+                    : "left this account unlogged"}.</>
               : <>Book is <span className="amount amount-inline">{formatPaise(delta)}</span> lower —
-                  something {isLiability ? "swiped wasn't logged" : "came in unlogged"}.</>}
+                  something {isLiability ? "swiped wasn't logged"
+                    : isPerson ? "you gave them wasn't logged"
+                    : "came in unlogged"}.</>}
             {" "}Posting an adjustment entry makes the books match.
           </p>
         )}

@@ -982,6 +982,11 @@ export default function BookPage() {
                           cls={bal > 0 ? "text-ledger" : "text-debit"}
                           incoming={bal > 0} />
                       </div>
+                      {p.reported_at && (
+                        <p className="text-[11px] text-ink-faint">
+                          ✓ agreed {new Date(p.reported_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+                        </p>
+                      )}
                     </div>
                   ))}
                   {settled.length > 0 && (
