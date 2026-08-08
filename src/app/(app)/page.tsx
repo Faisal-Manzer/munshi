@@ -914,9 +914,9 @@ export default function BookPage() {
                   </div>
                   {(due > 0 || unbilled > 0) && (
                     <p className="pl-3 py-0.5 text-[11px] text-ink-faint">
-                      {due > 0 && <>pay <span className="amount text-debit">{formatPaise(due)}</span> by the {ordinal(c.due_day)}</>}
+                      {due > 0 && <>pay <span className="amount amount-inline text-debit">{formatPaise(due)}</span> by the {ordinal(c.due_day)}</>}
                       {due > 0 && unbilled > 0 && " · "}
-                      {unbilled > 0 && <><span className="amount">{formatPaise(unbilled)}</span> bills the {ordinal(c.statement_day)}</>}
+                      {unbilled > 0 && <><span className="amount amount-inline">{formatPaise(unbilled)}</span> bills the {ordinal(c.statement_day)}</>}
                     </p>
                   )}
                   {recAt && (

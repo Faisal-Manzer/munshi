@@ -119,9 +119,9 @@ export function ReconcileModal({
         {delta !== null && delta !== 0 && (
           <p className="text-xs text-ink-soft border border-rule bg-paper px-3 py-2">
             {delta < 0
-              ? <>Book is <span className="amount">{formatPaise(Math.abs(delta))}</span> higher —
+              ? <>Book is <span className="amount amount-inline">{formatPaise(Math.abs(delta))}</span> higher —
                   something {isLiability ? "was over-logged" : "left this account unlogged"}.</>
-              : <>Book is <span className="amount">{formatPaise(delta)}</span> lower —
+              : <>Book is <span className="amount amount-inline">{formatPaise(delta)}</span> lower —
                   something {isLiability ? "swiped wasn't logged" : "came in unlogged"}.</>}
             {" "}Posting an adjustment entry makes the books match.
           </p>

@@ -50,6 +50,11 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* Amount sitting inside a sentence tracks the surrounding text size */
+.amount-inline {
+  font-size: inherit;
+}
+
 h1, h2 {
   font-family: var(--font-instrument-serif), serif;
   font-weight: 400;

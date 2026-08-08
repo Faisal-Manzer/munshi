@@ -269,9 +269,9 @@ export default function PlanPage() {
           )}
         </div>
         <p className="text-sm text-ink-soft text-right">
-          Liquid today <span className="amount">{formatPaise(liquidNow)}</span>
+          Liquid today <span className="amount amount-inline">{formatPaise(liquidNow)}</span>
           {" → by end of "}{monthName.split(" ")[0]}:{" "}
-          <span className={`amount ${projectedLiquid >= 0 ? "text-ledger" : "text-debit"}`}>
+          <span className={`amount amount-inline ${projectedLiquid >= 0 ? "text-ledger" : "text-debit"}`}>
             {formatPaise(projectedLiquid)}
           </span>
           <br />
