@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDownLeft } from "lucide-react";
-import { formatPaise } from "@/lib/money";
+import { formatPaise } from "@munshi/core";
 
 /** Small uppercase label over a tabular amount — the headline-number style
  * shared by Book and Plan so the two screens read as one product. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPostings, type EntryInput } from "@/lib/postings";
+import { buildPostings, type EntryInput } from "@munshi/core";
 
 function entry(patch: Partial<EntryInput>): EntryInput {
   return {
@@ -19,46 +19,42 @@ const sum = (rows: { amount_paise: number }[]) =>
 
 describe("buildPostings", () => {
   it("builds a two-leg entry: from credited, to debited", () => {
-    const rows = buildPostings("t1", entry({}));
+    const rows = buildPostings(entry({}));
     expect(rows).toEqual([
-      { transaction_id: "t1", account_id: "from", amount_paise: -10000 },
-      { transaction_id: "t1", account_id: "to", amount_paise: 10000 },
+      { account_id: "from", amount_paise: -10000 },
+      { account_id: "to", amount_paise: 10000 },
     ]);
   });
 
   it("splits into three legs when someone owes part", () => {
-    const rows = buildPostings(
-      "t1",
-      entry({ reimburseAccountId: "person", reimbursePaise: 4000 })
+    const rows = buildPostings(entry({ reimburseAccountId: "person", reimbursePaise: 4000 })
     );
     expect(rows).toEqual([
-      { transaction_id: "t1", account_id: "from", amount_paise: -10000 },
-      { transaction_id: "t1", account_id: "to", amount_paise: 6000 },
-      { transaction_id: "t1", account_id: "person", amount_paise: 4000 },
+      { account_id: "from", amount_paise: -10000 },
+      { account_id: "to", amount_paise: 6000 },
+      { account_id: "person", amount_paise: 4000 },
     ]);
   });
 
   it("clamps the reimbursement to the entry amount", () => {
-    const rows = buildPostings(
-      "t1",
-      entry({ reimburseAccountId: "person", reimbursePaise: 99999 })
+    const rows = buildPostings(entry({ reimburseAccountId: "person", reimbursePaise: 99999 })
     );
     // full amount goes to the person, own share drops out entirely
     expect(rows).toEqual([
-      { transaction_id: "t1", account_id: "from", amount_paise: -10000 },
-      { transaction_id: "t1", account_id: "person", amount_paise: 10000 },
+      { account_id: "from", amount_paise: -10000 },
+      { account_id: "person", amount_paise: 10000 },
     ]);
   });
 
   it("ignores a zero or negative reimbursement", () => {
-    expect(buildPostings("t1", entry({ reimburseAccountId: "p", reimbursePaise: 0 }))).toHaveLength(2);
-    expect(buildPostings("t1", entry({ reimburseAccountId: "p", reimbursePaise: -5 }))).toHaveLength(2);
+    expect(buildPostings(entry({ reimburseAccountId: "p", reimbursePaise: 0 }))).toHaveLength(2);
+    expect(buildPostings(entry({ reimburseAccountId: "p", reimbursePaise: -5 }))).toHaveLength(2);
   });
 
   it("ignores a reimbursement amount without a person", () => {
-    const rows = buildPostings("t1", entry({ reimbursePaise: 4000 }));
+    const rows = buildPostings(entry({ reimbursePaise: 4000 }));
     expect(rows).toHaveLength(2);
-    expect(rows[1]).toEqual({ transaction_id: "t1", account_id: "to", amount_paise: 10000 });
+    expect(rows[1]).toEqual({ account_id: "to", amount_paise: 10000 });
   });
 
   it("always balances to zero", () => {
@@ -72,15 +68,13 @@ describe("buildPostings", () => {
       { reimburseAccountId: "p", reimbursePaise: 10001 },
     ];
     for (const c of cases) {
-      expect(sum(buildPostings("t1", entry(c)))).toBe(0);
+      expect(sum(buildPostings(entry(c)))).toBe(0);
     }
   });
 
   it("never emits a zero-amount leg (the DB forbids them)", () => {
     // own share becomes 0 when the person owes everything
-    const rows = buildPostings(
-      "t1",
-      entry({ reimburseAccountId: "p", reimbursePaise: 10000 })
+    const rows = buildPostings(entry({ reimburseAccountId: "p", reimbursePaise: 10000 })
     );
     expect(rows.every((r) => r.amount_paise !== 0)).toBe(true);
   });

@@ -19,14 +19,14 @@ import {
   subtreeIds,
   type PlanContext,
   type Txn,
-} from "@/lib/calc";
-import { toISODate } from "@/lib/ledger";
+} from "@munshi/core";
+import { toISODate } from "@munshi/core";
 import type {
   Account,
   AccountBalance,
   CardCycle,
   RecurringTemplate,
-} from "@/lib/types";
+} from "@munshi/core";
 
 // ---- fixtures ---------------------------------------------------------------
 

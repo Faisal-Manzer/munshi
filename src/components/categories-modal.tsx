@@ -2,7 +2,7 @@
 
 import { Modal } from "@/components/modal";
 import { Amount } from "@/components/amount";
-import type { Account, AccountBalance } from "@/lib/types";
+import type { Account, AccountBalance } from "@munshi/core";
 import { Pencil, Plus } from "lucide-react";
 
 /** Manage expense categories & income sources — rare CRUD tucked behind the sidebar gear. */

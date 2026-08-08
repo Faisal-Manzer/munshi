@@ -1,7 +1,7 @@
 "use client";
 
 import { Select, type SelectGroup } from "@/components/select";
-import type { Account, AccountSubtype } from "@/lib/types";
+import type { Account, AccountSubtype } from "@munshi/core";
 
 const GROUPS: { label: string; subtypes: AccountSubtype[] }[] = [
   { label: "Banks", subtypes: ["bank"] },

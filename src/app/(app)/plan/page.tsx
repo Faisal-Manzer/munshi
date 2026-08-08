@@ -6,16 +6,13 @@ import { Amount } from "@/components/amount";
 import { Headline } from "@/components/headline";
 import { SideBlock } from "@/components/side-block";
 import { Select } from "@/components/select";
-import { amountMatches } from "@/lib/search";
+import { amountMatches, createEntry, emiInfo, fmtMonth, formatPaise, parseRupees, rewriteEntry, toISODate } from "@munshi/core";
+import type { Account, EntryInput, RecurringTemplate } from "@munshi/core";
 import { AccountSelect, accountGroups } from "@/components/account-select";
 import { Modal } from "@/components/modal";
 import { TemplateModal } from "@/components/template-form";
 import { TitleInput, useTitleSuggestions } from "@/components/title-input";
 import { DateInput } from "@/components/date-input";
-import { createEntry, rewriteEntry, type EntryInput } from "@/lib/postings";
-import { formatPaise, parseRupees } from "@/lib/money";
-import { toISODate } from "@/lib/ledger";
-import { emiInfo, fmtMonth } from "@/lib/emi";
 import {
   isIncomeTemplate,
   isInternalTemplate,
@@ -26,9 +23,8 @@ import {
   projectedLiquidThrough,
   type PlanContext,
   type Txn,
-} from "@/lib/calc";
+} from "@munshi/core";
 import { Pencil, Plus, Search, X } from "lucide-react";
-import type { Account, RecurringTemplate } from "@/lib/types";
 
 function fmtDate(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("en-IN", {
@@ -71,7 +67,7 @@ function PageSkeleton() {
 }
 
 export default function PlanPage() {
-  const { supabase, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
+  const { supabase, store, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [allOneOffs, setAllOneOffs] = useState<Txn[]>([]);
   const [doneCounts, setDoneCounts] = useState<Map<string, number>>(new Map());
@@ -154,7 +150,7 @@ export default function PlanPage() {
   // ---- one-off actions
   async function addOneOff(e: Omit<EntryInput, "ledgerId">) {
     try {
-      await createEntry(supabase, { ...e, ledgerId: ledgerId!, status: "pending" });
+      await createEntry(store, { ...e, ledgerId: ledgerId!, status: "pending" });
       setError(null);
       await Promise.all([load(), reload()]);
       return true;
@@ -171,7 +167,7 @@ export default function PlanPage() {
     );
     if (!neg || !pos) return;
     try {
-      await rewriteEntry(supabase, x.id, {
+      await rewriteEntry(store, x.id, {
         date: x.date,
         description: x.description,
         status: "pending",

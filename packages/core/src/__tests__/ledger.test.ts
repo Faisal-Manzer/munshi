@@ -9,8 +9,8 @@ import {
   stripTime,
   subtreeBalance,
   toISODate,
-} from "@/lib/ledger";
-import type { Account, AccountBalance } from "@/lib/types";
+} from "@munshi/core";
+import type { Account, AccountBalance } from "@munshi/core";
 
 function acc(patch: Partial<Account>): Account {
   return {

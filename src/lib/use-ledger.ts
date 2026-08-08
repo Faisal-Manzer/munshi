@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createSupabaseStore } from "@/lib/supabase-store";
 import { useActiveLedger } from "@/lib/ledger-context";
-import type { Account, AccountBalance, CardCycle } from "@/lib/types";
+import type { Account, AccountBalance, CardCycle } from "@munshi/core";
 
 /** Loads the active ledger's account tree + balances; shared by every page. */
 export function useLedger() {
   const supabase = useMemo(() => createClient(), []);
+  // every mutation goes through the store, never straight to Postgres
+  const store = useMemo(() => createSupabaseStore(supabase), [supabase]);
   const { ledgerId, ledger, ledgers, switchLedger, error: ledgerError } = useActiveLedger();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [balances, setBalances] = useState<Map<string, AccountBalance>>(
@@ -58,6 +61,7 @@ export function useLedger() {
 
   return {
     supabase,
+    store,
     ledgerId,
     ledger,
     ledgers,
@@ -71,4 +75,4 @@ export function useLedger() {
   };
 }
 
-export { accountById } from "./calc";
+export { accountById } from "@munshi/core";

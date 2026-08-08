@@ -4,10 +4,8 @@ import { useEffect, useState } from "react";
 import { useLedger } from "@/lib/use-ledger";
 import { Field } from "@/components/field";
 import { Modal } from "@/components/modal";
-import { createEntry } from "@/lib/postings";
-import { formatPaise, parseRupees } from "@/lib/money";
-import { displayBalance, subtreeBalance, toISODate } from "@/lib/ledger";
-import type { Account } from "@/lib/types";
+import { createEntry, displayBalance, formatPaise, parseRupees, subtreeBalance, toISODate } from "@munshi/core";
+import type { Account } from "@munshi/core";
 
 /**
  * Reconciliation as an event, not a lingering comparison: show the book
@@ -22,7 +20,7 @@ export function ReconcileModal({
   onDone: () => Promise<unknown>;
   onClose: () => void;
 }) {
-  const { supabase, ledgerId, accounts, balances } = useLedger();
+  const { supabase, store, ledgerId, accounts, balances } = useLedger();
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -72,7 +70,7 @@ export function ReconcileModal({
       if (error) throw error;
       adj = data as Account;
     }
-    await createEntry(supabase, {
+    await createEntry(store, {
       ledgerId: ledgerId!,
       date: toISODate(new Date()),
       description: `Reconcile — ${account!.name}`,

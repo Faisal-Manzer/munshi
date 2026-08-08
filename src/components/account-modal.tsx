@@ -5,9 +5,8 @@ import { useLedger } from "@/lib/use-ledger";
 import { Field } from "@/components/field";
 import { Modal } from "@/components/modal";
 import { Select } from "@/components/select";
-import { parseRupees } from "@/lib/money";
-import { toISODate } from "@/lib/ledger";
-import type { Account, AccountKind, AccountSubtype } from "@/lib/types";
+import { parseRupees, toISODate } from "@munshi/core";
+import type { Account, AccountKind, AccountSubtype } from "@munshi/core";
 
 export interface NewAccountOption {
   label: string;

@@ -6,13 +6,10 @@ import { useLedger } from "@/lib/use-ledger";
 import { Amount } from "@/components/amount";
 import { Field } from "@/components/field";
 import { Select } from "@/components/select";
-import { createEntry, postEquityAdjustment } from "@/lib/postings";
-import { emiInfo, fmtMonth } from "@/lib/emi";
-import { formatPaise, parseRupees } from "@/lib/money";
-import { displayBalance, subtreeBalance, toISODate } from "@/lib/ledger";
-import { cardDueNow, cardUnbilled } from "@/lib/calc";
+import { cardDueNow, cardUnbilled, createEntry, displayBalance, emiInfo, fmtMonth, formatPaise, parseRupees, postEquityAdjustment, subtreeBalance, toISODate } from "@munshi/core";
+import type { Account, AccountSubtype, Posting, RecurringTemplate, Transaction } from "@munshi/core";
+import { createSupabaseStore } from "@/lib/supabase-store";
 import { ArrowDownLeft, Scale, X } from "lucide-react";
-import type { Account, AccountSubtype, Posting, RecurringTemplate, Transaction } from "@/lib/types";
 
 const SUBTYPE_LABEL: Record<AccountSubtype, string> = {
   bank: "Bank account",
@@ -426,7 +423,7 @@ function OutstandingForm({
     const delta = -paise - balance;
     try {
       await postEquityAdjustment(
-        supabase, account.ledger_id, account.id, delta,
+        createSupabaseStore(supabase), account.ledger_id, account.id, delta,
         `Outstanding set — ${account.name}`, toISODate(new Date())
       );
       onError(null);
@@ -478,7 +475,7 @@ function SettleForm({
     const paise = parseRupees(amt);
     if (!paise || paise <= 0 || !bankId) return;
     try {
-      await createEntry(supabase, {
+      await createEntry(createSupabaseStore(supabase), {
         ledgerId: account.ledger_id,
         date: toISODate(new Date()),
         description: theyPay

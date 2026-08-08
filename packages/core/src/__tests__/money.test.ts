@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatPaise, formatPaisePlain, parseRupees } from "@/lib/money";
+import { formatPaise, formatPaisePlain, parseRupees } from "@munshi/core";
 
 // Intl output uses a non-breaking space in some ICU builds — normalise it away
 const norm = (s: string) => s.replace(/ /g, " ").replace(/\s/g, "");

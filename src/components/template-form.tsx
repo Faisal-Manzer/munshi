@@ -7,14 +7,13 @@ import { Modal } from "@/components/modal";
 import { Select } from "@/components/select";
 import { accountGroups } from "@/components/account-select";
 import { DateInput } from "@/components/date-input";
-import { parseRupees } from "@/lib/money";
-import { toISODate } from "@/lib/ledger";
+import { parseRupees, toISODate } from "@munshi/core";
 import {
   RECURRING_KIND_LABEL,
   type Account,
   type RecurringKind,
   type RecurringTemplate,
-} from "@/lib/types";
+} from "@munshi/core";
 
 /** Create/edit a recurring template in a modal. Pass `editing` to edit; null = new. */
 export function TemplateModal({

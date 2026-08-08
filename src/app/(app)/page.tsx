@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLedger, accountById } from "@/lib/use-ledger";
 import { useActiveLedger } from "@/lib/ledger-context";
-import { createEntry, rewriteEntry, type EntryInput } from "@/lib/postings";
+import { amountMatches, createEntry, emiActive, emiInfo, fmtMonth, formatPaise, parseRupees, rewriteEntry, subtreeBalance, toISODate } from "@munshi/core";
+import type { EntryInput } from "@munshi/core";
 import { Amount } from "@/components/amount";
 import { AccountSelect, NEW_CATEGORY, accountGroups } from "@/components/account-select";
 import { Select } from "@/components/select";
@@ -12,15 +13,12 @@ import { DateInput } from "@/components/date-input";
 import { Field } from "@/components/field";
 import { Headline } from "@/components/headline";
 import { SideBlock } from "@/components/side-block";
-import { amountMatches } from "@/lib/search";
 import { InputModal, Modal } from "@/components/modal";
 import { AccountModal, BLOCK_OPTIONS } from "@/components/account-modal";
 import { AccountSheet } from "@/components/account-sheet";
 import { CategoriesModal } from "@/components/categories-modal";
 import { ReconcileModal } from "@/components/reconcile-modal";
 import { TemplateModal } from "@/components/template-form";
-import { formatPaise, parseRupees } from "@/lib/money";
-import { subtreeBalance, toISODate } from "@/lib/ledger";
 import {
   cardDueNow as cardDueNowOf,
   cardUnbilled as cardUnbilledOf,
@@ -32,8 +30,7 @@ import {
   oneOffAmount,
   oneOffKind,
   parentCardsOf,
-} from "@/lib/calc";
-import { emiActive, emiInfo, fmtMonth } from "@/lib/emi";
+} from "@munshi/core";
 import { ArrowDownLeft, ArrowLeftRight, ChevronDown, ChevronRight, Pencil, Plus, RotateCcw, Search, Settings2, Users, X } from "lucide-react";
 import {
   DEFAULT_TAGS,
@@ -41,7 +38,7 @@ import {
   type Posting,
   type RecurringTemplate,
   type Transaction,
-} from "@/lib/types";
+} from "@munshi/core";
 
 interface TxnRow {
   kind: "txn";
@@ -119,7 +116,7 @@ function PageSkeleton() {
 }
 
 export default function BookPage() {
-  const { supabase, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
+  const { supabase, store, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
   const [txns, setTxns] = useState<(Transaction & { postings: Posting[] })[]>([]);
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [month, setMonth] = useState(() => toISODate(new Date()).slice(0, 7));
@@ -467,7 +464,7 @@ export default function BookPage() {
     if (!paise || paise <= 0) return;
     const scale = paise / t.amount_paise;
     try {
-      await createEntry(supabase, {
+      await createEntry(store, {
         ledgerId: ledgerId!,
         date: today,
         description: t.name,
@@ -499,7 +496,7 @@ export default function BookPage() {
     const paise = parseRupees(receiveAmt);
     if (!paise || paise <= 0 || !receiveBank) return;
     try {
-      await createEntry(supabase, {
+      await createEntry(store, {
         ledgerId: ledgerId!,
         date: today,
         description: receiveModal.label,
@@ -537,7 +534,7 @@ export default function BookPage() {
   async function saveEdit(row: TxnRow, patch: Partial<EntryInput>) {
     if (!row.fromId || !row.toId) return;
     try {
-      await rewriteEntry(supabase, row.txn.id, {
+      await rewriteEntry(store, row.txn.id, {
         date: row.txn.date,
         description: row.txn.description,
         status: row.txn.status,
@@ -662,7 +659,7 @@ export default function BookPage() {
               </tr>
             </thead>
             <tbody>
-              <QuickAddRow accounts={active} supabase={supabase} onDone={refreshAll}
+              <QuickAddRow accounts={active} supabase={supabase} store={store} onDone={refreshAll}
                 onAdded={(id) => setJustAdded((l) => [...l, id])} onError={setError} />
               {!filtering && openingRows.length > 0 && (
                 <tr className="bg-paper">
@@ -1236,7 +1233,7 @@ export default function BookPage() {
         onSave={async (sourceId, paise) => {
           if (!coverFor?.fromId) return;
           try {
-            await createEntry(supabase, {
+            await createEntry(store, {
               ledgerId: ledgerId!,
               date: today,
               description: `Cover: ${coverFor.txn.description}`,
@@ -1611,10 +1608,11 @@ function TxnEditRow({
 }
 
 function QuickAddRow({
-  accounts, supabase, onDone, onAdded, onError,
+  accounts, supabase, store, onDone, onAdded, onError,
 }: {
   accounts: Account[];
   supabase: ReturnType<typeof useLedger>["supabase"];
+  store: ReturnType<typeof useLedger>["store"];
   onDone: () => Promise<unknown>;
   onAdded: (txnId: string) => void;
   onError: (m: string | null) => void;
@@ -1660,7 +1658,7 @@ function QuickAddRow({
     const paise = parseRupees(amount);
     if (!desc.trim() || !fromId || !paise || paise <= 0) return;
     try {
-      const txn = await createEntry(supabase, {
+      const txnId = await createEntry(store, {
         ledgerId: ledgerId!,
         date,
         description: desc.trim(),
@@ -1672,7 +1670,7 @@ function QuickAddRow({
         notes: note.trim() || null,
       });
       onError(null);
-      onAdded(txn.id);
+      onAdded(txnId);
       await onDone();
       setDesc("");
       setAmount("");

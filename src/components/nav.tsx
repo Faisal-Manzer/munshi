@@ -8,7 +8,7 @@ import { useActiveLedger } from "@/lib/ledger-context";
 import { Modal } from "@/components/modal";
 import { Field } from "@/components/field";
 import { BookOpen, Check, ChevronDown, Eye, EyeOff, Pencil, Plus, Users, X } from "lucide-react";
-import type { LedgerMember, LedgerRole } from "@/lib/types";
+import type { LedgerMember, LedgerRole } from "@munshi/core";
 
 const LINKS = [
   { href: "/", label: "Book" },

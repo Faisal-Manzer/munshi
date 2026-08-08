@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Ledger } from "@/lib/types";
+import type { Ledger } from "@munshi/core";
 
 const ACTIVE_KEY = "munshi-active-ledger";
 

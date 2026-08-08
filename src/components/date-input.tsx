@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { toISODate } from "@/lib/ledger";
+import { toISODate } from "@munshi/core";
 
 const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
 

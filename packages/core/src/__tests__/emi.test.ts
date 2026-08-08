@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { emiActive, emiInfo, fmtMonth } from "@/lib/emi";
-import type { RecurringTemplate } from "@/lib/types";
+import { emiActive, emiInfo, fmtMonth } from "@munshi/core";
+import type { RecurringTemplate } from "@munshi/core";
 
 function tpl(patch: Partial<RecurringTemplate>): RecurringTemplate {
   return {

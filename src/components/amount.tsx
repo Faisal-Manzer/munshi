@@ -1,4 +1,4 @@
-import { formatPaise } from "@/lib/money";
+import { formatPaise } from "@munshi/core";
 
 export function Amount({
   paise,

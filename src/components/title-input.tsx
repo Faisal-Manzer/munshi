@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Posting, Transaction } from "@/lib/types";
+import type { Posting, Transaction } from "@munshi/core";
 
 export interface TitleSuggestion {
   title: string;
