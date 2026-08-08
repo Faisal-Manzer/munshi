@@ -11,6 +11,7 @@ export * from "./money";
 export * from "./emi";
 export * from "./ledger";
 export * from "./calc";
+export * from "./balances";
 export * from "./search";
 export * from "./store";
 export * from "./entries";
