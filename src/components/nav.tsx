@@ -18,19 +18,13 @@ const LINKS = [
 export function Nav({ email }: { email: string }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [privacy, setPrivacy] = useState(false);
-
-  useEffect(() => {
-    const on = localStorage.getItem("munshi-privacy") !== "0"; // blurred by default
-    setPrivacy(on);
-    document.documentElement.classList.toggle("privacy", on);
-  }, []);
+  // Blurred on every load — the reveal is per-session only, never persisted
+  const [privacy, setPrivacy] = useState(true);
 
   function togglePrivacy() {
     const on = !privacy;
     setPrivacy(on);
     document.documentElement.classList.toggle("privacy", on);
-    localStorage.setItem("munshi-privacy", on ? "1" : "0");
   }
 
   async function signOut() {
