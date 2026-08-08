@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLedger, accountById } from "@/lib/use-ledger";
 import { decryptPosting, decryptTemplate, decryptTransaction } from "@/lib/e2ee/codec";
-import { useActiveLedger } from "@/lib/ledger-context";
 import { amountMatches, createEntry, emiActive, emiInfo, fmtMonth, formatPaise, parseRupees, rewriteEntry, subtreeBalance, toISODate } from "@munshi/core";
 import type { EntryInput } from "@munshi/core";
 import { Amount } from "@/components/amount";
@@ -117,7 +116,7 @@ function PageSkeleton() {
 }
 
 export default function BookPage() {
-  const { supabase, store, ledgerKey, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
+  const { supabase, store, ledgerKey, keyReady, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
   const [txns, setTxns] = useState<(Transaction & { postings: Posting[] })[]>([]);
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [month, setMonth] = useState(() => toISODate(new Date()).slice(0, 7));
@@ -168,6 +167,9 @@ export default function BookPage() {
 
   const load = useCallback(async () => {
     if (!ledgerId) return;
+    // the key resolves a tick after the ledger id does; loading in that gap
+    // would hit encrypted rows with no key and raise a false "locked" error
+    if (!keyReady) return;
     const start = `${month}-01`;
     const end = toISODate(new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1));
     const [xRes, tRes] = await Promise.all([
@@ -199,10 +201,11 @@ export default function BookPage() {
       setTemplates(
         (tRes.data as RecurringTemplate[]).map((t) => decryptTemplate(ledgerKey, t))
       );
+      setError(null); // a good load clears whatever the last bad one said
     } catch (e) {
       setError(e instanceof Error ? e.message : "could not decrypt this book");
     }
-  }, [supabase, ledgerId, month, ledgerKey]);
+  }, [supabase, ledgerId, month, ledgerKey, keyReady]);
 
   useEffect(() => {
     load();
@@ -685,7 +688,7 @@ export default function BookPage() {
               </tr>
             </thead>
             <tbody>
-              <QuickAddRow accounts={active} supabase={supabase} store={store} ledgerKey={ledgerKey} onDone={refreshAll}
+              <QuickAddRow accounts={active} supabase={supabase} store={store} ledgerId={ledgerId} ledgerKey={ledgerKey} onDone={refreshAll}
                 onAdded={(id) => setJustAdded((l) => [...l, id])} onError={setError} />
               {!filtering && openingRows.length > 0 && (
                 <tr className="bg-paper">
@@ -1634,17 +1637,17 @@ function TxnEditRow({
 }
 
 function QuickAddRow({
-  accounts, supabase, store, ledgerKey, onDone, onAdded, onError,
+  accounts, supabase, store, ledgerId, ledgerKey, onDone, onAdded, onError,
 }: {
   accounts: Account[];
   supabase: ReturnType<typeof useLedger>["supabase"];
   store: ReturnType<typeof useLedger>["store"];
+  ledgerId: string | null;
   ledgerKey: Uint8Array | null;
   onDone: () => Promise<unknown>;
   onAdded: (txnId: string) => void;
   onError: (m: string | null) => void;
 }) {
-  const { ledgerId } = useActiveLedger();
   const [date, setDate] = useState(() => toISODate(new Date()));
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
@@ -1654,7 +1657,7 @@ function QuickAddRow({
   const [note, setNote] = useState("");
   const [newCatOpen, setNewCatOpen] = useState(false);
   const [planned, setPlanned] = useState<boolean | null>(null); // null = follow the date
-  const suggestions = useTitleSuggestions(supabase, ledgerKey);
+  const suggestions = useTitleSuggestions(supabase, ledgerId, ledgerKey);
 
   const isPlanned = planned ?? date > toISODate(new Date());
 

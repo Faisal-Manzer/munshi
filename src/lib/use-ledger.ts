@@ -75,7 +75,11 @@ export function useLedger() {
         });
         setError(null);
       } catch (e) {
-        // an encrypted book with no key in hand: say so instead of showing zeroes
+        // an encrypted book with no key in hand. Blank the ledger as well as
+        // reporting it: leaving the last readable load on screen would show
+        // decrypted entries under a "locked" banner, and any edit would then
+        // be built from rows we can no longer read
+        setData({ accounts: [], transactions: [], postings: [] });
         setError(e instanceof Error ? e.message : "could not decrypt this book");
       }
     }
@@ -106,6 +110,7 @@ export function useLedger() {
     ledgers,
     switchLedger,
     ledgerKey,
+    keyReady,
     provisionLedgerKey: provision,
     reloadKey,
     accounts: data.accounts,

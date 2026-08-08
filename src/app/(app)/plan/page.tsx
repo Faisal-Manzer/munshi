@@ -68,7 +68,7 @@ function PageSkeleton() {
 }
 
 export default function PlanPage() {
-  const { supabase, store, ledgerKey, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
+  const { supabase, store, ledgerKey, keyReady, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [allOneOffs, setAllOneOffs] = useState<Txn[]>([]);
   const [doneCounts, setDoneCounts] = useState<Map<string, number>>(new Map());
@@ -88,6 +88,9 @@ export default function PlanPage() {
 
   const load = useCallback(async () => {
     if (!ledgerId) return;
+    // the key resolves a tick after the ledger id does; loading in that gap
+    // would hit encrypted rows with no key and raise a false "locked" error
+    if (!keyReady) return;
     // pending one-offs from next month through the viewed month — the whole
     // stretch feeds the projected-liquid accumulation, not just the viewed month
     const start = `${nextMonth}-01`;
@@ -127,7 +130,10 @@ export default function PlanPage() {
           postings: x.postings.map((p) => decryptPosting(ledgerKey, p)),
         }))
       );
+      setError(null); // a good load clears whatever the last bad one said
     } catch (e) {
+      setTemplates([]);
+      setAllOneOffs([]);
       setError(e instanceof Error ? e.message : "could not decrypt this book");
       return;
     }
@@ -136,7 +142,7 @@ export default function PlanPage() {
       counts.set(r.recurring_template_id, (counts.get(r.recurring_template_id) ?? 0) + 1);
     }
     setDoneCounts(counts);
-  }, [supabase, ledgerId, month, nextMonth, ledgerKey]);
+  }, [supabase, ledgerId, month, nextMonth, ledgerKey, keyReady]);
 
   useEffect(() => {
     load();
@@ -354,7 +360,7 @@ export default function PlanPage() {
                 </tr>
               </thead>
               <tbody>
-                <OneOffAddRow month={month} accounts={active} onCreate={addOneOff} supabase={supabase} ledgerKey={ledgerKey} />
+                <OneOffAddRow month={month} accounts={active} onCreate={addOneOff} supabase={supabase} ledgerId={ledgerId} ledgerKey={ledgerKey} />
                 {planRows.map((r) => {
                   if (r.oneoff) {
                     const x = r.oneoff;
@@ -527,12 +533,13 @@ function CalcLine({
 }
 
 function OneOffAddRow({
-  month, accounts, onCreate, supabase, ledgerKey,
+  month, accounts, onCreate, supabase, ledgerId, ledgerKey,
 }: {
   month: string;
   accounts: Account[];
   onCreate: (e: Omit<EntryInput, "ledgerId">) => Promise<boolean>;
   supabase: ReturnType<typeof useLedger>["supabase"];
+  ledgerId: string | null;
   ledgerKey: Uint8Array | null;
 }) {
   const [date, setDate] = useState(`${month}-01`);
@@ -542,7 +549,7 @@ function OneOffAddRow({
   const [toId, setToId] = useState("");
   const [tag, setTag] = useState("");
   const [note, setNote] = useState("");
-  const suggestions = useTitleSuggestions(supabase, ledgerKey);
+  const suggestions = useTitleSuggestions(supabase, ledgerId, ledgerKey);
 
   useEffect(() => setDate(`${month}-01`), [month]);
 

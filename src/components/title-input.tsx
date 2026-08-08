@@ -21,14 +21,19 @@ export interface TitleSuggestion {
  */
 export function useTitleSuggestions(
   supabase: SupabaseClient,
+  ledgerId: string | null,
   ledgerKey: Uint8Array | null = null
 ): TitleSuggestion[] {
   const [list, setList] = useState<TitleSuggestion[]>([]);
 
   useEffect(() => {
+    if (!ledgerId) return;
     supabase
       .from("transactions")
       .select("description, tag, reimburse_account_id, payload, postings(account_id, amount_paise, payload)")
+      // scoped to the open book: suggestions from another ledger are both a
+      // privacy leak between books and undecryptable under this book's key
+      .eq("ledger_id", ledgerId)
       .order("date", { ascending: false })
       .limit(400)
       .then(({ data }) => {
@@ -66,7 +71,7 @@ export function useTitleSuggestions(
         }
         setList([...map.values()]);
       });
-  }, [supabase, ledgerKey]);
+  }, [supabase, ledgerId, ledgerKey]);
 
   return list;
 }
