@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { createSupabaseStore } from "@/lib/supabase-store";
 import { useActiveLedger } from "@/lib/ledger-context";
+import { useLedgerKey } from "@/lib/e2ee/use-ledger-key";
+import { decryptAccount, decryptPosting, decryptTransaction } from "@/lib/e2ee/codec";
 import { computeBalances, computeCardCycles } from "@munshi/core";
 import type {
   Account,
@@ -27,8 +29,12 @@ import type {
 export function useLedger() {
   const supabase = useMemo(() => createClient(), []);
   // every mutation goes through the store, never straight to Postgres
-  const store = useMemo(() => createSupabaseStore(supabase), [supabase]);
   const { ledgerId, ledger, ledgers, switchLedger, error: ledgerError } = useActiveLedger();
+  const { key: ledgerKey, ready: keyReady, provision, reload: reloadKey } = useLedgerKey(ledgerId);
+  const store = useMemo(
+    () => createSupabaseStore(supabase, ledgerKey),
+    [supabase, ledgerKey]
+  );
   const [data, setData] = useState<LedgerData>({
     accounts: [],
     transactions: [],
@@ -39,6 +45,8 @@ export function useLedger() {
 
   const reload = useCallback(async () => {
     if (!ledgerId) return;
+    // wait for the key: decrypting with a null key would throw on every row
+    if (!keyReady) return;
     const [accRes, txnRes, postRes] = await Promise.all([
       supabase
         .from("accounts")
@@ -48,26 +56,31 @@ export function useLedger() {
         .order("created_at"),
       supabase
         .from("transactions")
-        .select("id, ledger_id, date, description, status, tag, notes, created_at, recurring_template_id, reimburse_account_id, reimburse_amount_paise")
+        .select("id, ledger_id, date, description, status, tag, notes, created_at, recurring_template_id, reimburse_account_id, reimburse_amount_paise, payload")
         .eq("ledger_id", ledgerId),
       supabase
         .from("postings")
-        .select("id, transaction_id, account_id, amount_paise")
+        .select("id, transaction_id, account_id, amount_paise, payload")
         .eq("ledger_id", ledgerId),
     ]);
     const failure = accRes.error ?? txnRes.error ?? postRes.error;
     if (failure) {
       setError(failure.message);
     } else {
-      setData({
-        accounts: accRes.data as Account[],
-        transactions: txnRes.data as Transaction[],
-        postings: postRes.data as Posting[],
-      });
-      setError(null);
+      try {
+        setData({
+          accounts: (accRes.data as Account[]).map((a) => decryptAccount(ledgerKey, a)),
+          transactions: (txnRes.data as Transaction[]).map((t) => decryptTransaction(ledgerKey, t)),
+          postings: (postRes.data as Posting[]).map((p) => decryptPosting(ledgerKey, p)),
+        });
+        setError(null);
+      } catch (e) {
+        // an encrypted book with no key in hand: say so instead of showing zeroes
+        setError(e instanceof Error ? e.message : "could not decrypt this book");
+      }
     }
     setLoading(false);
-  }, [supabase, ledgerId]);
+  }, [supabase, ledgerId, ledgerKey, keyReady]);
 
   useEffect(() => {
     setLoading(true); // switching books: don't show the old one's numbers
@@ -92,6 +105,9 @@ export function useLedger() {
     ledger,
     ledgers,
     switchLedger,
+    ledgerKey,
+    provisionLedgerKey: provision,
+    reloadKey,
     accounts: data.accounts,
     transactions: data.transactions,
     postings: data.postings,

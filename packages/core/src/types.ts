@@ -44,6 +44,8 @@ export interface Account {
   sort_order: number;
   archived: boolean;
   is_liquid: boolean; // spendable cash — used for liquid totals and cash lists
+  /** Ciphertext holding this row's values once the book is encrypted. */
+  payload?: string | null;
 }
 
 export type TxnStatus = "pending" | "done";
@@ -62,6 +64,7 @@ export interface Transaction {
   reimburse_amount_paise: number | null;
   notes: string | null;
   created_at?: string; // set by the DB; used for stable same-day ordering
+  payload?: string | null;
 }
 
 export interface CardCycle {
@@ -77,6 +80,7 @@ export interface Posting {
   transaction_id: string;
   account_id: string;
   amount_paise: number; // debit +, credit -
+  payload?: string | null;
 }
 
 export type RecurringKind =
@@ -105,6 +109,7 @@ export interface RecurringTemplate {
   end_date: string | null;
   active: boolean;
   notes: string | null;
+  payload?: string | null;
 }
 
 export interface AccountBalance {

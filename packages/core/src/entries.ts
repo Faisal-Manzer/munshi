@@ -64,25 +64,40 @@ function txnDraft(e: Omit<EntryInput, "ledgerId">): TransactionDraft {
   };
 }
 
+/**
+ * The double-entry invariant, checked here.
+ *
+ * Postgres used to enforce this with a deferred constraint trigger summing
+ * postings.amount_paise (migration 001). Once amounts are encrypted the server
+ * cannot see the numbers, let alone add them up, so this became the only guard
+ * — which is why it runs on every write path rather than at the edges.
+ */
+export function assertBalanced(postings: PostingDraft[]): void {
+  const sum = postings.reduce((s, p) => s + p.amount_paise, 0);
+  if (sum !== 0) {
+    throw new Error(`Entry does not balance — legs sum to ${sum} paise, not 0.`);
+  }
+  if (postings.some((p) => p.amount_paise === 0)) {
+    throw new Error("Entry has a zero-amount leg.");
+  }
+  if (postings.length < 2) {
+    throw new Error("Entry needs at least two legs.");
+  }
+}
+
 export function entryCreateOp(e: EntryInput): EntryCreateOp {
-  return {
-    kind: "entry.create",
-    ledgerId: e.ledgerId,
-    txn: txnDraft(e),
-    postings: buildPostings(e),
-  };
+  const postings = buildPostings(e);
+  assertBalanced(postings);
+  return { kind: "entry.create", ledgerId: e.ledgerId, txn: txnDraft(e), postings };
 }
 
 export function entryRewriteOp(
   transactionId: string,
   e: Omit<EntryInput, "ledgerId"> // a rewrite never moves an entry between books
 ): EntryRewriteOp {
-  return {
-    kind: "entry.rewrite",
-    transactionId,
-    txn: txnDraft(e),
-    postings: buildPostings(e),
-  };
+  const postings = buildPostings(e);
+  assertBalanced(postings);
+  return { kind: "entry.rewrite", transactionId, txn: txnDraft(e), postings };
 }
 
 export function createEntry(store: LedgerStore, e: EntryInput): Promise<string> {
@@ -121,13 +136,15 @@ export async function postEquityAdjustment(
     { ledgerId, ...OPENING_BALANCES },
     "subtype"
   );
+  const postings = [
+    { account_id: accountId, amount_paise: deltaPaise },
+    { account_id: equity.id, amount_paise: -deltaPaise },
+  ];
+  assertBalanced(postings);
   return store.apply({
     kind: "entry.create",
     ledgerId,
     txn: { date, description, status: "done" },
-    postings: [
-      { account_id: accountId, amount_paise: deltaPaise },
-      { account_id: equity.id, amount_paise: -deltaPaise },
-    ],
+    postings,
   });
 }
