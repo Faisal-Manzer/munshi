@@ -129,6 +129,15 @@ export function unlockWithRecoveryKey(stored: StoredIdentity, recoveryKey: Uint8
   }
 }
 
+/**
+ * Build a session from a masterKey unwrapped by any means — including one the
+ * platform unwrapped for us (a non-extractable WebCrypto key, the iOS
+ * Keychain), where the raw device key never becomes visible to JS.
+ */
+export function identityFromMasterKey(stored: StoredIdentity, masterKey: Uint8Array): Identity {
+  return openIdentity(stored, masterKey);
+}
+
 function openIdentity(stored: StoredIdentity, masterKey: Uint8Array): Identity {
   const privateKey = decrypt(masterKey, stored.encryptedPrivateKey, AAD.privateKey);
   return { masterKey, keyPair: { publicKey: stored.publicKey, privateKey } };

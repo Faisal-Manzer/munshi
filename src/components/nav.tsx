@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useActiveLedger } from "@/lib/ledger-context";
 import { Modal } from "@/components/modal";
 import { Field } from "@/components/field";
+import { VaultButton } from "@/components/vault/vault-button";
 import { BookOpen, Check, ChevronDown, Eye, EyeOff, Pencil, Plus, Users, X } from "lucide-react";
 import type { LedgerMember, LedgerRole } from "@munshi/core";
 
@@ -68,6 +69,7 @@ export function Nav({ email }: { email: string }) {
           >
             {privacy ? <EyeOff size={15} /> : <Eye size={15} />}
           </button>
+          <VaultButton email={email} />
           <span className="hidden sm:block text-xs text-ink-faint" title="Signed in as">
             {email}
           </span>
