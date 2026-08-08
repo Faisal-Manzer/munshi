@@ -42,7 +42,7 @@ function TemplateForm({
   editing: RecurringTemplate | null;
   onSaved: () => void;
 }) {
-  const { supabase, ledgerId } = useLedger();
+  const { store, ledgerId } = useLedger();
   const people = accounts.filter((a) => a.subtype === "receivable");
   const [name, setName] = useState(editing?.name ?? "");
   const [kind, setKind] = useState<RecurringKind>(editing?.kind ?? "autodebit_bank");
@@ -103,14 +103,24 @@ function TemplateForm({
       })(),
       is_budget: isBudget,
     };
-    const { error } = editing
-      ? await supabase.from("recurring_templates").update(row).eq("id", editing.id)
-      : await supabase.from("recurring_templates").insert({ ...row, ledger_id: ledgerId });
-    setSaving(false);
-    if (error) {
-      setErr(error.message);
+    try {
+      if (editing) {
+        await store.updateTemplate(editing, row);
+      } else {
+        await store.createTemplate({
+          ...row,
+          ledger_id: ledgerId!,
+          installments_done: 0,
+          active: true,
+          notes: null,
+        });
+      }
+    } catch (e) {
+      setSaving(false);
+      setErr(e instanceof Error ? e.message : "failed");
       return;
     }
+    setSaving(false);
     onSaved();
   }
 
@@ -118,15 +128,14 @@ function TemplateForm({
     if (!editing) return;
     if (!confirm(`Stop "${editing.name}"? Past entries stay.`)) return;
     setSaving(true);
-    const { error } = await supabase
-      .from("recurring_templates")
-      .update({ active: false })
-      .eq("id", editing.id);
-    setSaving(false);
-    if (error) {
-      setErr(error.message);
+    try {
+      await store.updateTemplate(editing, { active: false });
+    } catch (e) {
+      setSaving(false);
+      setErr(e instanceof Error ? e.message : "failed");
       return;
     }
+    setSaving(false);
     onSaved();
   }
 

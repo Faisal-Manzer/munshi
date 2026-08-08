@@ -13,10 +13,19 @@ import type {
   AccountSpec,
   LedgerOp,
   LedgerStore,
+  NewAccount,
+  NewTemplate,
   PostingDraft,
+  RecurringTemplate,
+  Transaction,
   TransactionDraft,
 } from "@munshi/core";
-import { encryptAccount, encryptPosting, encryptTransaction } from "@/lib/e2ee/codec";
+import {
+  encryptAccount,
+  encryptPosting,
+  encryptTemplate,
+  encryptTransaction,
+} from "@/lib/e2ee/codec";
 
 function txnRow(txn: TransactionDraft) {
   return {
@@ -105,6 +114,82 @@ export function createSupabaseStore(
         .insert(postingRows(op.transactionId, op.postings, ledgerKey));
       if (pe) throw pe;
       return op.transactionId;
+    },
+
+    async createAccount(account: NewAccount): Promise<Account> {
+      const id = account.id ?? (ledgerKey ? newId() : undefined);
+      const { data, error } = await supabase
+        .from("accounts")
+        .insert({
+          ...(id ? { id } : {}),
+          ...account,
+          ...(ledgerKey ? encryptAccount(ledgerKey, id!, account) : {}),
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      // the row that comes back has its value columns blanked when encrypted;
+      // hand the caller what it actually asked to store
+      return { ...(data as Account), ...account } as Account;
+    },
+
+    async updateAccount(current: Account, patch: Partial<Account>): Promise<void> {
+      const merged = { ...current, ...patch };
+      const { error } = await supabase
+        .from("accounts")
+        .update({
+          ...patch,
+          ...(ledgerKey ? encryptAccount(ledgerKey, current.id, merged) : {}),
+        })
+        .eq("id", current.id);
+      if (error) throw error;
+    },
+
+    async createTemplate(template: NewTemplate): Promise<string> {
+      const id = template.id ?? (ledgerKey ? newId() : undefined);
+      const { data, error } = await supabase
+        .from("recurring_templates")
+        .insert({
+          ...(id ? { id } : {}),
+          ...template,
+          ...(ledgerKey ? encryptTemplate(ledgerKey, id!, template) : {}),
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      return data.id as string;
+    },
+
+    async updateTemplate(
+      current: RecurringTemplate,
+      patch: Partial<RecurringTemplate>
+    ): Promise<void> {
+      const merged = { ...current, ...patch };
+      const { error } = await supabase
+        .from("recurring_templates")
+        .update({
+          ...patch,
+          ...(ledgerKey ? encryptTemplate(ledgerKey, current.id, merged) : {}),
+        })
+        .eq("id", current.id);
+      if (error) throw error;
+    },
+
+    async patchTransaction(current: Transaction, patch: Partial<Transaction>): Promise<void> {
+      const merged = { ...current, ...patch };
+      const { error } = await supabase
+        .from("transactions")
+        .update({
+          ...patch,
+          ...(ledgerKey ? encryptTransaction(ledgerKey, current.id, merged) : {}),
+        })
+        .eq("id", current.id);
+      if (error) throw error;
+    },
+
+    async deleteTransaction(transactionId: string): Promise<void> {
+      const { error } = await supabase.from("transactions").delete().eq("id", transactionId);
+      if (error) throw error;
     },
 
     async ensureAccount(spec: AccountSpec, matchBy): Promise<Account> {

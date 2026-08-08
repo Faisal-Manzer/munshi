@@ -10,6 +10,7 @@ import { Modal } from "@/components/modal";
 import { Field } from "@/components/field";
 import { useVault } from "@/lib/e2ee/vault-context";
 import { RecoveryActions, RecoveryWords } from "@/components/vault/recovery-kit";
+import { EncryptBookRow } from "@/components/vault/encrypt-book-row";
 
 export function VaultSettingsModal({ email, onClose }: { email: string; onClose: () => void }) {
   const {
@@ -59,6 +60,7 @@ export function VaultSettingsModal({ email, onClose }: { email: string; onClose:
             <Row label="Recovery kit"
               hint={record?.recoveryConfirmedAt ? "Saved" : "Never confirmed saved"}
               action="Show words" onClick={reveal} />
+            <EncryptBookRow />
             <Row label="This browser"
               hint={deviceRemembered ? "Stays unlocked here" : "Asks every visit"}
               action={deviceRemembered ? "Forget" : "Remember"}

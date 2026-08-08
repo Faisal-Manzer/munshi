@@ -5,8 +5,8 @@ import { useLedger } from "@/lib/use-ledger";
 import { Field } from "@/components/field";
 import { Modal } from "@/components/modal";
 import { Select } from "@/components/select";
-import { parseRupees, toISODate } from "@munshi/core";
-import type { Account, AccountKind, AccountSubtype } from "@munshi/core";
+import { parseRupees, postEquityAdjustment, toISODate } from "@munshi/core";
+import type { AccountKind, AccountSubtype } from "@munshi/core";
 
 export interface NewAccountOption {
   label: string;
@@ -45,7 +45,7 @@ export function AccountModal({
   onDone: () => Promise<unknown>;
   onClose: () => void;
 }) {
-  const { supabase, ledgerId, accounts } = useLedger();
+  const { store, ledgerId, accounts } = useLedger();
   const options = (optionIdxs ?? NEW_OPTIONS.map((_, i) => i)).map((i) => NEW_OPTIONS[i]);
   const [optIdx, setOptIdx] = useState(0);
   const opt = options[Math.min(optIdx, options.length - 1)];
@@ -83,10 +83,9 @@ export function AccountModal({
       setSaving(false);
       return;
     }
-    const { data: acc, error: e1 } = await supabase
-      .from("accounts")
-      .insert({
-        ledger_id: ledgerId,
+    try {
+      const acc = await store.createAccount({
+        ledger_id: ledgerId!,
         name: name.trim(),
         kind: opt.kind,
         subtype: opt.subtype,
@@ -96,44 +95,25 @@ export function AccountModal({
         credit_limit_paise: parseRupees(limit),
         person_name: opt.subtype === "receivable" ? name.trim() : null,
         is_liquid: effLiquid,
-      })
-      .select()
-      .single();
-    if (e1) {
-      setErr(e1.message);
+        reported_balance_paise: null,
+        reported_at: null,
+        sort_order: 0,
+        archived: false,
+      });
+
+      // opening balance via equity so the books stay balanced
+      const openingPaise = parseRupees(opening);
+      if (openingPaise) {
+        const sign = opt.kind === "liability" ? -1 : 1;
+        await postEquityAdjustment(
+          store, ledgerId!, acc.id, sign * openingPaise,
+          `Opening balance — ${name.trim()}`, toISODate(new Date())
+        );
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "failed");
       setSaving(false);
       return;
-    }
-
-    // opening balance via equity so books stay balanced
-    const openingPaise = parseRupees(opening);
-    if (openingPaise) {
-      let equity = accounts.find((a) => a.subtype === "opening_balance");
-      if (!equity) {
-        const { data: eq } = await supabase
-          .from("accounts")
-          .insert({ ledger_id: ledgerId, name: "Opening balances", kind: "equity", subtype: "opening_balance" })
-          .select()
-          .single();
-        equity = eq as Account;
-      }
-      const sign = opt.kind === "liability" ? -1 : 1;
-      const { data: txn } = await supabase
-        .from("transactions")
-        .insert({
-          ledger_id: ledgerId,
-          date: toISODate(new Date()),
-          description: `Opening balance — ${name.trim()}`,
-          status: "done",
-        })
-        .select()
-        .single();
-      if (txn && equity) {
-        await supabase.from("postings").insert([
-          { transaction_id: txn.id, account_id: acc.id, amount_paise: sign * openingPaise },
-          { transaction_id: txn.id, account_id: equity.id, amount_paise: -sign * openingPaise },
-        ]);
-      }
     }
     setSaving(false);
     await onDone();

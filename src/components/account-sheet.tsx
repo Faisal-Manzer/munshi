@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLedger } from "@/lib/use-ledger";
+import { decryptPosting, decryptTemplate, decryptTransaction } from "@/lib/e2ee/codec";
 import { Amount } from "@/components/amount";
 import { Field } from "@/components/field";
 import { Select } from "@/components/select";
 import { cardDueNow, cardUnbilled, createEntry, displayBalance, emiInfo, fmtMonth, formatPaise, parseRupees, postEquityAdjustment, subtreeBalance, toISODate } from "@munshi/core";
 import type { Account, AccountSubtype, Posting, RecurringTemplate, Transaction } from "@munshi/core";
-import { createSupabaseStore } from "@/lib/supabase-store";
 import { ArrowDownLeft, Scale, X } from "lucide-react";
 
 const SUBTYPE_LABEL: Record<AccountSubtype, string> = {
@@ -44,7 +44,7 @@ export function AccountSheet({
   onAddChild: (optionIdxs: number[]) => void;
   onClose: () => void;
 }) {
-  const { supabase, accounts, balances, cycles, reload } = useLedger();
+  const { supabase, store, ledgerKey, accounts, balances, cycles, reload } = useLedger();
   const account = accounts.find((a) => a.id === accountId) ?? null;
   const active = useMemo(() => accounts.filter((a) => !a.archived), [accounts]);
 
@@ -73,8 +73,10 @@ export function AccountSheet({
       .eq("active", true)
       .limit(1)
       .maybeSingle()
-      .then(({ data }) => setLoanTemplate((data as RecurringTemplate) ?? null));
-  }, [supabase, accountId]);
+      .then(({ data }) =>
+        setLoanTemplate(data ? decryptTemplate(ledgerKey, data as RecurringTemplate) : null)
+      );
+  }, [supabase, accountId, ledgerKey]);
 
   const loadHistory = useCallback(async () => {
     if (!accountId) return;
@@ -86,7 +88,16 @@ export function AccountSheet({
       setError(e.message);
       return;
     }
-    const list = (data ?? []) as (Posting & { transactions: Transaction })[];
+    let list: (Posting & { transactions: Transaction })[];
+    try {
+      list = ((data ?? []) as (Posting & { transactions: Transaction })[]).map((row) => ({
+        ...decryptPosting(ledgerKey, row),
+        transactions: decryptTransaction(ledgerKey, row.transactions),
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "could not decrypt this history");
+      return;
+    }
     list.sort((a, b) => {
       if (a.transactions.date !== b.transactions.date)
         return a.transactions.date < b.transactions.date ? -1 : 1;
@@ -97,7 +108,7 @@ export function AccountSheet({
     withRun.reverse(); // newest first
     setRows(withRun);
     setError(null);
-  }, [supabase, accountId]);
+  }, [supabase, accountId, ledgerKey]);
 
   useEffect(() => {
     loadHistory();
@@ -141,7 +152,7 @@ export function AccountSheet({
           <>
             <SheetHeader account={account}
               parent={account.parent_id ? accounts.find((a) => a.id === account.parent_id) ?? null : null}
-              supabase={supabase} onSaved={refreshAll} onOpenParent={onOpenAccount} onClose={onClose} />
+              store={store} onSaved={refreshAll} onOpenParent={onOpenAccount} onClose={onClose} />
             <BalanceSummary account={account} accounts={accounts} active={active}
               balances={balances} cycles={cycles} loanTemplate={loanTemplate} />
 
@@ -171,7 +182,7 @@ export function AccountSheet({
             </div>
 
             {outstandingOpen && isLoan && account && (
-              <OutstandingForm account={account} balance={bal} template={loanTemplate} supabase={supabase}
+              <OutstandingForm account={account} balance={bal} template={loanTemplate} store={store}
                 onDone={async () => {
                   setOutstandingOpen(false);
                   await refreshAll();
@@ -181,7 +192,7 @@ export function AccountSheet({
 
             {settleOpen && isPerson && (
               <SettleForm account={account} balance={bal} banks={active.filter((a) => a.is_liquid)}
-                supabase={supabase}
+                store={store}
                 onDone={async () => {
                   setSettleOpen(false);
                   await refreshAll();
@@ -214,7 +225,7 @@ export function AccountSheet({
                 balances={balances} onOpenAccount={onOpenAccount} />
             )}
             {tab === "settings" && (
-              <Settings account={account} supabase={supabase} onSaved={refreshAll} onClose={onClose} />
+              <Settings account={account} store={store} onSaved={refreshAll} onClose={onClose} />
             )}
           </>
         )}
@@ -225,11 +236,11 @@ export function AccountSheet({
 }
 
 function SheetHeader({
-  account, parent, supabase, onSaved, onOpenParent, onClose,
+  account, parent, store, onSaved, onOpenParent, onClose,
 }: {
   account: Account;
   parent: Account | null;
-  supabase: ReturnType<typeof useLedger>["supabase"];
+  store: ReturnType<typeof useLedger>["store"];
   onSaved: () => Promise<unknown>;
   onOpenParent: (id: string) => void;
   onClose: () => void;
@@ -240,9 +251,9 @@ function SheetHeader({
   async function saveName() {
     const v = name.trim();
     if (!v || v === account.name) return;
-    const patch: Record<string, string> = { name: v };
+    const patch: Partial<Account> = { name: v };
     if (account.subtype === "receivable") patch.person_name = v;
-    await supabase.from("accounts").update(patch).eq("id", account.id);
+    await store.updateAccount(account, patch);
     await onSaved();
   }
 
@@ -384,12 +395,12 @@ function ActionBtn({
 }
 
 function OutstandingForm({
-  account, balance, template, supabase, onDone, onError,
+  account, balance, template, store, onDone, onError,
 }: {
   account: Account;
   balance: number;
   template: RecurringTemplate | null;
-  supabase: ReturnType<typeof useLedger>["supabase"];
+  store: ReturnType<typeof useLedger>["store"];
   onDone: () => Promise<void>;
   onError: (m: string | null) => void;
 }) {
@@ -423,7 +434,7 @@ function OutstandingForm({
     const delta = -paise - balance;
     try {
       await postEquityAdjustment(
-        createSupabaseStore(supabase), account.ledger_id, account.id, delta,
+        store, account.ledger_id, account.id, delta,
         `Outstanding set — ${account.name}`, toISODate(new Date())
       );
       onError(null);
@@ -458,12 +469,12 @@ function OutstandingForm({
 }
 
 function SettleForm({
-  account, balance, banks, supabase, onDone, onError,
+  account, balance, banks, store, onDone, onError,
 }: {
   account: Account;
   balance: number;
   banks: Account[];
-  supabase: ReturnType<typeof useLedger>["supabase"];
+  store: ReturnType<typeof useLedger>["store"];
   onDone: () => Promise<void>;
   onError: (m: string | null) => void;
 }) {
@@ -475,7 +486,7 @@ function SettleForm({
     const paise = parseRupees(amt);
     if (!paise || paise <= 0 || !bankId) return;
     try {
-      await createEntry(createSupabaseStore(supabase), {
+      await createEntry(store, {
         ledgerId: account.ledger_id,
         date: toISODate(new Date()),
         description: theyPay
@@ -585,10 +596,10 @@ function History({
 }
 
 function Settings({
-  account, supabase, onSaved, onClose,
+  account, store, onSaved, onClose,
 }: {
   account: Account;
-  supabase: ReturnType<typeof useLedger>["supabase"];
+  store: ReturnType<typeof useLedger>["store"];
   onSaved: () => Promise<unknown>;
   onClose: () => void;
 }) {
@@ -606,32 +617,29 @@ function Settings({
 
   async function save() {
     setSaving(true);
-    const { error } = await supabase
-      .from("accounts")
-      .update({
+    try {
+      await store.updateAccount(account, {
         statement_day: stmtDay ? Number(stmtDay) : null,
         due_day: dueDay ? Number(dueDay) : null,
         credit_limit_paise: parseRupees(limit),
         is_liquid: liquid,
-      })
-      .eq("id", account.id);
-    setSaving(false);
-    if (error) {
-      setErr(error.message);
+      });
+    } catch (e) {
+      setSaving(false);
+      setErr(e instanceof Error ? e.message : "failed");
       return;
     }
+    setSaving(false);
     setErr(null);
     await onSaved();
   }
 
   async function archive() {
     if (!confirm(`Archive ${account.name}? It stays in history but hides from lists.`)) return;
-    const { error } = await supabase
-      .from("accounts")
-      .update({ archived: true })
-      .eq("id", account.id);
-    if (error) {
-      setErr(error.message);
+    try {
+      await store.updateAccount(account, { archived: true });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "failed");
       return;
     }
     await onSaved();

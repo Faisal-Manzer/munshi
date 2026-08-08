@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLedger, accountById } from "@/lib/use-ledger";
+import { decryptPosting, decryptTemplate, decryptTransaction } from "@/lib/e2ee/codec";
 import { Amount } from "@/components/amount";
 import { Headline } from "@/components/headline";
 import { SideBlock } from "@/components/side-block";
@@ -67,7 +68,7 @@ function PageSkeleton() {
 }
 
 export default function PlanPage() {
-  const { supabase, store, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
+  const { supabase, store, ledgerKey, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [allOneOffs, setAllOneOffs] = useState<Txn[]>([]);
   const [doneCounts, setDoneCounts] = useState<Map<string, number>>(new Map());
@@ -118,14 +119,24 @@ export default function PlanPage() {
       setError(tRes.error?.message ?? oRes.error?.message ?? "load failed");
       return;
     }
-    setTemplates(tRes.data as RecurringTemplate[]);
-    setAllOneOffs(oRes.data as Txn[]);
+    try {
+      setTemplates((tRes.data as RecurringTemplate[]).map((t) => decryptTemplate(ledgerKey, t)));
+      setAllOneOffs(
+        (oRes.data as Txn[]).map((x) => ({
+          ...decryptTransaction(ledgerKey, x),
+          postings: x.postings.map((p) => decryptPosting(ledgerKey, p)),
+        }))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "could not decrypt this book");
+      return;
+    }
     const counts = new Map<string, number>();
     for (const r of (cRes.data ?? []) as { recurring_template_id: string }[]) {
       counts.set(r.recurring_template_id, (counts.get(r.recurring_template_id) ?? 0) + 1);
     }
     setDoneCounts(counts);
-  }, [supabase, ledgerId, month, nextMonth]);
+  }, [supabase, ledgerId, month, nextMonth, ledgerKey]);
 
   useEffect(() => {
     load();
@@ -189,7 +200,7 @@ export default function PlanPage() {
 
   async function removeOneOff(x: Txn) {
     if (!confirm(`Delete "${x.description}"?`)) return;
-    await supabase.from("transactions").delete().eq("id", x.id);
+    await store.deleteTransaction(x.id);
     await Promise.all([load(), reload()]);
   }
 
@@ -343,7 +354,7 @@ export default function PlanPage() {
                 </tr>
               </thead>
               <tbody>
-                <OneOffAddRow month={month} accounts={active} onCreate={addOneOff} supabase={supabase} />
+                <OneOffAddRow month={month} accounts={active} onCreate={addOneOff} supabase={supabase} ledgerKey={ledgerKey} />
                 {planRows.map((r) => {
                   if (r.oneoff) {
                     const x = r.oneoff;
@@ -516,12 +527,13 @@ function CalcLine({
 }
 
 function OneOffAddRow({
-  month, accounts, onCreate, supabase,
+  month, accounts, onCreate, supabase, ledgerKey,
 }: {
   month: string;
   accounts: Account[];
   onCreate: (e: Omit<EntryInput, "ledgerId">) => Promise<boolean>;
   supabase: ReturnType<typeof useLedger>["supabase"];
+  ledgerKey: Uint8Array | null;
 }) {
   const [date, setDate] = useState(`${month}-01`);
   const [desc, setDesc] = useState("");
@@ -530,7 +542,7 @@ function OneOffAddRow({
   const [toId, setToId] = useState("");
   const [tag, setTag] = useState("");
   const [note, setNote] = useState("");
-  const suggestions = useTitleSuggestions(supabase);
+  const suggestions = useTitleSuggestions(supabase, ledgerKey);
 
   useEffect(() => setDate(`${month}-01`), [month]);
 

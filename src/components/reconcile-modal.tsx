@@ -20,7 +20,7 @@ export function ReconcileModal({
   onDone: () => Promise<unknown>;
   onClose: () => void;
 }) {
-  const { supabase, store, ledgerId, accounts, balances } = useLedger();
+  const { store, ledgerId, accounts, balances } = useLedger();
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -58,18 +58,12 @@ export function ReconcileModal({
   const delta = target === null ? null : target - rawBook;
 
   async function postAdjustment(deltaPaise: number) {
-    let adj = accounts.find(
-      (a) => a.kind === "expense" && a.name.toLowerCase() === "adjustments"
-    );
-    if (!adj) {
-      const { data, error } = await supabase
-        .from("accounts")
-        .insert({ ledger_id: ledgerId, name: "Adjustments", kind: "expense", subtype: "general_expense" })
-        .select()
-        .single();
-      if (error) throw error;
-      adj = data as Account;
-    }
+    const adj =
+      accounts.find((a) => a.kind === "expense" && a.name.toLowerCase() === "adjustments") ??
+      (await store.ensureAccount(
+        { ledgerId: ledgerId!, name: "Adjustments", kind: "expense", subtype: "general_expense" },
+        "name"
+      ));
     await createEntry(store, {
       ledgerId: ledgerId!,
       date: toISODate(new Date()),
@@ -88,10 +82,10 @@ export function ReconcileModal({
     setErr(null);
     try {
       if (withAdjustment && delta !== 0) await postAdjustment(delta);
-      await supabase
-        .from("accounts")
-        .update({ reported_balance_paise: target, reported_at: new Date().toISOString() })
-        .eq("id", account!.id);
+      await store.updateAccount(account!, {
+        reported_balance_paise: target,
+        reported_at: new Date().toISOString(),
+      });
       await onDone();
       onClose();
     } catch (e) {

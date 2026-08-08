@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLedger, accountById } from "@/lib/use-ledger";
+import { decryptPosting, decryptTemplate, decryptTransaction } from "@/lib/e2ee/codec";
 import { useActiveLedger } from "@/lib/ledger-context";
 import { amountMatches, createEntry, emiActive, emiInfo, fmtMonth, formatPaise, parseRupees, rewriteEntry, subtreeBalance, toISODate } from "@munshi/core";
 import type { EntryInput } from "@munshi/core";
@@ -116,7 +117,7 @@ function PageSkeleton() {
 }
 
 export default function BookPage() {
-  const { supabase, store, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
+  const { supabase, store, ledgerKey, ledgerId, accounts, balances, cycles, loading, reload } = useLedger();
   const [txns, setTxns] = useState<(Transaction & { postings: Posting[] })[]>([]);
   const [templates, setTemplates] = useState<RecurringTemplate[]>([]);
   const [month, setMonth] = useState(() => toISODate(new Date()).slice(0, 7));
@@ -188,9 +189,20 @@ export default function BookPage() {
       setError(xRes.error?.message ?? tRes.error?.message ?? "load failed");
       return;
     }
-    setTxns(xRes.data as (Transaction & { postings: Posting[] })[]);
-    setTemplates(tRes.data as RecurringTemplate[]);
-  }, [supabase, ledgerId, month]);
+    try {
+      setTxns(
+        (xRes.data as (Transaction & { postings: Posting[] })[]).map((t) => ({
+          ...decryptTransaction(ledgerKey, t),
+          postings: t.postings.map((p) => decryptPosting(ledgerKey, p)),
+        }))
+      );
+      setTemplates(
+        (tRes.data as RecurringTemplate[]).map((t) => decryptTemplate(ledgerKey, t))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "could not decrypt this book");
+    }
+  }, [supabase, ledgerId, month, ledgerKey]);
 
   useEffect(() => {
     load();
@@ -515,19 +527,33 @@ export default function BookPage() {
 
   async function addPerson(name: string) {
     if (!name.trim()) return;
-    const { error: e } = await supabase.from("accounts").insert({
-      ledger_id: ledgerId,
-      name: name.trim(),
-      kind: "asset",
-      subtype: "receivable",
-      person_name: name.trim(),
-    });
+    const { error: e } = await store
+      .createAccount({
+        ledger_id: ledgerId!,
+        name: name.trim(),
+        kind: "asset",
+        subtype: "receivable",
+        person_name: name.trim(),
+        parent_id: null,
+        statement_day: null,
+        due_day: null,
+        credit_limit_paise: null,
+        reported_balance_paise: null,
+        reported_at: null,
+        sort_order: 0,
+        archived: false,
+        is_liquid: false,
+      })
+      .then(() => ({ error: null as { message: string } | null }))
+      .catch((err: Error) => ({ error: { message: err.message } }));
     if (e) setError(e.message);
     else await reload();
   }
 
-  async function patchTxn(id: string, patch: Partial<Transaction>) {
-    await supabase.from("transactions").update(patch).eq("id", id);
+  async function patchTxn(txn: Transaction, patch: Partial<Transaction>) {
+    // the whole row goes down, not just the change: an encrypted payload is
+    // re-sealed from every field, so a bare patch would lose the rest
+    await store.patchTransaction(txn, patch);
     await refreshAll();
   }
 
@@ -556,7 +582,7 @@ export default function BookPage() {
 
   async function remove(row: TxnRow) {
     if (!confirm(`Delete "${row.txn.description}"?`)) return;
-    await supabase.from("transactions").delete().eq("id", row.txn.id);
+    await store.deleteTransaction(row.txn.id);
     await refreshAll();
   }
 
@@ -659,7 +685,7 @@ export default function BookPage() {
               </tr>
             </thead>
             <tbody>
-              <QuickAddRow accounts={active} supabase={supabase} store={store} onDone={refreshAll}
+              <QuickAddRow accounts={active} supabase={supabase} store={store} ledgerKey={ledgerKey} onDone={refreshAll}
                 onAdded={(id) => setJustAdded((l) => [...l, id])} onError={setError} />
               {!filtering && openingRows.length > 0 && (
                 <tr className="bg-paper">
@@ -1457,7 +1483,7 @@ function TxnEditRow({
   onSplit: () => void;
   onCover: () => void;
   onSave: (row: TxnRow, patch: Partial<EntryInput>) => void;
-  onPatch: (id: string, patch: Partial<Transaction>) => void;
+  onPatch: (txn: Transaction, patch: Partial<Transaction>) => void;
   onDelete: () => void;
 }) {
   const t = row.txn;
@@ -1563,7 +1589,7 @@ function TxnEditRow({
         <input list="known-tags" defaultValue={t.tag ?? ""} placeholder="—"
           onBlur={(e) => {
             const v = e.target.value.trim();
-            if (v !== (t.tag ?? "")) onPatch(t.id, { tag: v || null });
+            if (v !== (t.tag ?? "")) onPatch(t, { tag: v || null });
           }}
           className={`text-xs ${t.tag ? "text-pending" : "text-ink-faint"}`} />
       </td>
@@ -1571,7 +1597,7 @@ function TxnEditRow({
         <input defaultValue={t.notes ?? ""} placeholder="—"
           onBlur={(e) => {
             const v = e.target.value.trim();
-            if (v !== (t.notes ?? "")) onPatch(t.id, { notes: v || null });
+            if (v !== (t.notes ?? "")) onPatch(t, { notes: v || null });
           }}
           className="text-xs text-ink-soft" />
       </td>
@@ -1580,10 +1606,10 @@ function TxnEditRow({
           <span className="text-xs text-ledger mr-1" title="Posted from a recurring item">✓</span>
         )}
         {pending ? (
-          <button onClick={() => onPatch(t.id, { status: "done", date: today })}
+          <button onClick={() => onPatch(t, { status: "done", date: today })}
             className="text-xs text-ledger hover:underline mr-1">paid</button>
         ) : (
-          <IconBtn title="Mark pending again" onClick={() => onPatch(t.id, { status: "pending" })}>
+          <IconBtn title="Mark pending again" onClick={() => onPatch(t, { status: "pending" })}>
             <RotateCcw size={12} />
           </IconBtn>
         )}
@@ -1608,11 +1634,12 @@ function TxnEditRow({
 }
 
 function QuickAddRow({
-  accounts, supabase, store, onDone, onAdded, onError,
+  accounts, supabase, store, ledgerKey, onDone, onAdded, onError,
 }: {
   accounts: Account[];
   supabase: ReturnType<typeof useLedger>["supabase"];
   store: ReturnType<typeof useLedger>["store"];
+  ledgerKey: Uint8Array | null;
   onDone: () => Promise<unknown>;
   onAdded: (txnId: string) => void;
   onError: (m: string | null) => void;
@@ -1627,7 +1654,7 @@ function QuickAddRow({
   const [note, setNote] = useState("");
   const [newCatOpen, setNewCatOpen] = useState(false);
   const [planned, setPlanned] = useState<boolean | null>(null); // null = follow the date
-  const suggestions = useTitleSuggestions(supabase);
+  const suggestions = useTitleSuggestions(supabase, ledgerKey);
 
   const isPlanned = planned ?? date > toISODate(new Date());
 
@@ -1641,17 +1668,28 @@ function QuickAddRow({
 
   async function createCategory(name: string) {
     if (!name.trim()) return;
-    const { data, error } = await supabase
-      .from("accounts")
-      .insert({ ledger_id: ledgerId, name: name.trim(), kind: "expense", subtype: "general_expense" })
-      .select()
-      .single();
-    if (error) {
-      onError(error.message);
-      return;
+    try {
+      const acc = await store.createAccount({
+        ledger_id: ledgerId!,
+        name: name.trim(),
+        kind: "expense",
+        subtype: "general_expense",
+        parent_id: null,
+        statement_day: null,
+        due_day: null,
+        credit_limit_paise: null,
+        person_name: null,
+        reported_balance_paise: null,
+        reported_at: null,
+        sort_order: 0,
+        archived: false,
+        is_liquid: false,
+      });
+      await onDone();
+      setToId(acc.id);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "failed");
     }
-    await onDone();
-    setToId(data.id);
   }
 
   async function submit() {

@@ -24,6 +24,14 @@ function fakeStore() {
       ensured.push(spec);
       return { id: "equity-1", name: spec.name } as Account;
     },
+    // this suite exercises the entry path only; the row mutations are
+    // covered against the real driver shape in the app's codec tests
+    createAccount: async (a) => ({ id: "acc-1", ...a }) as Account,
+    updateAccount: async () => {},
+    createTemplate: async () => "tpl-1",
+    updateTemplate: async () => {},
+    patchTransaction: async () => {},
+    deleteTransaction: async () => {},
   };
   return { store, ops, ensured };
 }

@@ -12,7 +12,14 @@
  * invariants intact through sync merges, and what an encrypted op will carry
  * verbatim.
  */
-import type { Account, AccountKind, AccountSubtype, TxnStatus } from "./types";
+import type {
+  Account,
+  AccountKind,
+  AccountSubtype,
+  RecurringTemplate,
+  Transaction,
+  TxnStatus,
+} from "./types";
 
 /** One leg of an entry. Debits are positive, credits negative; legs sum to 0. */
 export interface PostingDraft {
@@ -58,9 +65,33 @@ export interface AccountSpec {
   subtype: AccountSubtype;
 }
 
+/** A new account, with every field the create form collects. */
+export type NewAccount = Omit<Account, "id" | "user_id" | "payload"> & { id?: string };
+
+/** A new recurring template, minus the columns storage assigns. */
+export type NewTemplate = Omit<RecurringTemplate, "id" | "payload"> & { id?: string };
+
 export interface LedgerStore {
   /** Persist one whole operation atomically; returns the transaction id. */
   apply(op: LedgerOp): Promise<string>;
+
+  /**
+   * Everything below is a mutation that used to be written straight to
+   * Postgres from a component. They live here because an encrypted book has
+   * no readable columns to write to — a driver has to re-seal the row, and it
+   * can only do that if it is the one performing the write.
+   *
+   * Patches take the current row as well as the change: re-sealing a payload
+   * needs every field, not only the edited one.
+   */
+  createAccount(account: NewAccount): Promise<Account>;
+  updateAccount(current: Account, patch: Partial<Account>): Promise<void>;
+
+  createTemplate(template: NewTemplate): Promise<string>;
+  updateTemplate(current: RecurringTemplate, patch: Partial<RecurringTemplate>): Promise<void>;
+
+  patchTransaction(current: Transaction, patch: Partial<Transaction>): Promise<void>;
+  deleteTransaction(transactionId: string): Promise<void>;
   /**
    * Fetch the ledger's account matching `subtype` (or `name` for the
    * catch-alls that have no subtype of their own), creating it if absent.

@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Posting, Transaction } from "@munshi/core";
+import { decryptPosting, decryptTransaction } from "@/lib/e2ee/codec";
 
 export interface TitleSuggestion {
   title: string;
@@ -13,18 +14,36 @@ export interface TitleSuggestion {
 }
 
 /** Distinct past entry titles with how they were last booked — for quick-add prefill. */
-export function useTitleSuggestions(supabase: SupabaseClient): TitleSuggestion[] {
+/**
+ * Past titles, for autocompletion. Descriptions and amounts arrive as
+ * ciphertext on an encrypted book, so the key has to come along; without it
+ * there is simply nothing to suggest.
+ */
+export function useTitleSuggestions(
+  supabase: SupabaseClient,
+  ledgerKey: Uint8Array | null = null
+): TitleSuggestion[] {
   const [list, setList] = useState<TitleSuggestion[]>([]);
 
   useEffect(() => {
     supabase
       .from("transactions")
-      .select("description, tag, reimburse_account_id, postings(account_id, amount_paise)")
+      .select("description, tag, reimburse_account_id, payload, postings(account_id, amount_paise, payload)")
       .order("date", { ascending: false })
       .limit(400)
       .then(({ data }) => {
         const map = new Map<string, TitleSuggestion>();
-        for (const t of (data ?? []) as (Pick<Transaction, "description" | "tag" | "reimburse_account_id"> & { postings: Posting[] })[]) {
+        const rows = (data ?? []) as (Transaction & { postings: Posting[] })[];
+        for (const raw of rows) {
+          let t: Transaction & { postings: Posting[] };
+          try {
+            t = {
+              ...decryptTransaction(ledgerKey, raw),
+              postings: raw.postings.map((p) => decryptPosting(ledgerKey, p)),
+            };
+          } catch {
+            continue; // a row we cannot read simply does not suggest anything
+          }
           const title = t.description.trim();
           if (!title || title.startsWith("Opening balance")) continue;
           const key = title.toLowerCase();
@@ -47,7 +66,7 @@ export function useTitleSuggestions(supabase: SupabaseClient): TitleSuggestion[]
         }
         setList([...map.values()]);
       });
-  }, [supabase]);
+  }, [supabase, ledgerKey]);
 
   return list;
 }
