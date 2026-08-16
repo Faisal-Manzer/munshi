@@ -248,6 +248,23 @@ export default function BookPage() {
     window.history.replaceState(null, "", u);
   }, []);
 
+  // net spend per expense category this month — split credits and covers
+  // post back to the category, so summing every leg keeps the number honest
+  const catSpends = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const x of txns) {
+      if (x.postings.some((p) => accountById(accounts, p.account_id)?.kind === "equity")) continue;
+      for (const p of x.postings) {
+        if (accountById(accounts, p.account_id)?.kind !== "expense") continue;
+        totals.set(p.account_id, (totals.get(p.account_id) ?? 0) + p.amount_paise);
+      }
+    }
+    return [...totals.entries()]
+      .filter(([, paise]) => paise !== 0)
+      .sort((a, b) => b[1] - a[1]);
+  }, [txns, accounts]);
+  const totalSpend = catSpends.reduce((s, [, paise]) => s + paise, 0);
+
   const knownTags = useMemo(() => {
     const s = new Set(DEFAULT_TAGS);
     for (const t of txns) if (t.tag) s.add(t.tag);
@@ -975,6 +992,26 @@ export default function BookPage() {
                 </div>
               );
             })}
+          </SideBlock>
+
+          <SideBlock title="Spending"
+            total={<span className={`amount text-xs ${totalSpend > 0 ? "text-debit" : ""}`}>{formatPaise(-totalSpend)}</span>}>
+            {catSpends.map(([id, paise]) => {
+              const cat = accountById(accounts, id);
+              if (!cat) return null;
+              return (
+                <div key={id} className="px-3 py-1.5 flex items-center justify-between gap-2">
+                  <button onClick={() => openSheet(id)}
+                    className="text-sm text-left hover:text-ledger truncate" title={`${cat.name} — details`}>
+                    {cat.name}
+                  </button>
+                  <AmountCell paise={-paise} cls={paise > 0 ? "text-debit" : ""} />
+                </div>
+              );
+            })}
+            {catSpends.length === 0 && (
+              <p className="px-3 py-1.5 text-xs text-ink-faint">Nothing spent this month yet.</p>
+            )}
           </SideBlock>
 
           <SideBlock title="People"
