@@ -10,8 +10,10 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@munshi/core": "*",
     "@munshi/crypto": "*",
-    "@munshi/store": "*"
+    "@munshi/store": "*",
+    "zod": "^4.4.3"
   }
 }

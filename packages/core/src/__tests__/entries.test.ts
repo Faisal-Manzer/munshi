@@ -6,14 +6,15 @@ import {
   rewriteEntry,
   type Account,
   type AccountSpec,
-  type LedgerOp,
+  type EntryOp,
   type LedgerStore,
 } from "@munshi/core";
 
 /** Records what the mutation API hands to storage, so the op shape is testable
  *  without a database — the same seam an encrypted oplog will occupy. */
 function fakeStore() {
-  const ops: LedgerOp[] = [];
+  // this suite only exercises the entry path, so the recorder is typed to it
+  const ops: EntryOp[] = [];
   const ensured: AccountSpec[] = [];
   const store: LedgerStore = {
     async apply(op) {
@@ -21,7 +22,7 @@ function fakeStore() {
       return op.kind === "entry.create" ? `txn-${ops.length}` : op.transactionId;
     },
     async applyAll(batch) {
-      ops.push(...batch);
+      ops.push(...(batch as EntryOp[]));
       return batch.map((op) => ({ kind: op.kind, id: null }));
     },
     async ensureAccount(spec) {
