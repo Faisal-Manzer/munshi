@@ -10,7 +10,7 @@
  * Pure, and it never touches storage: the ops here have not been written and
  * may never be.
  */
-import type { Account, LedgerOp, Posting, Transaction } from "@munshi/core";
+import type { Account, LedgerOp, Posting } from "@munshi/core";
 import type { LedgerSnapshot } from "@munshi/store";
 
 /** Ids for rows that do not exist yet; visible only inside a simulation. */
