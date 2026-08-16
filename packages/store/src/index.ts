@@ -10,4 +10,5 @@
  * WebCrypto exist on Node 24 too.
  */
 export * from "./codec";
+export * from "./snapshot";
 export * from "./supabase";
