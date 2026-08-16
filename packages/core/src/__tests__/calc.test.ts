@@ -357,6 +357,35 @@ describe("cardPlansFor", () => {
     expect(far.recurring).toBe(7000); // only the open-ended subcard template
   });
 
+  // Axis-style card: bills the 11th, due the 1st of the next month
+  const axis = acc({ id: "axis", kind: "liability", subtype: "credit_card", statement_day: 11, due_day: 1 });
+  function axisCtx(payments = 0): PlanContext {
+    return {
+      accounts: [...accounts, axis],
+      active: [...accounts, axis],
+      templates: [],
+      allOneOffs: [],
+      cycles: new Map([
+        ["axis", { account_id: "axis", cutoff: "2026-08-11", billed_paise: -1002756, payments_since_paise: payments, spends_since_paise: -5000 }],
+      ]),
+      today: new Date(2026, 7, 17), // 17 Aug — the 11 Aug statement has cut
+    };
+  }
+
+  it("carries the real unpaid bill once the statement has cut", () => {
+    const p = cardPlansFor(axisCtx(), "2026-09").find((c) => c.card.id === "axis")!;
+    expect(toISODate(p.stmtDate)).toBe("2026-08-11");
+    expect(toISODate(p.dueDate)).toBe("2026-09-01");
+    expect(p.alreadyBilled).toBe(true);
+    expect(p.total).toBe(1002756);
+  });
+
+  it("payments since the cutoff shrink an already-billed due", () => {
+    const p = cardPlansFor(axisCtx(1002756), "2026-09").find((c) => c.card.id === "axis")!;
+    expect(p.alreadyBilled).toBe(true);
+    expect(p.total).toBe(0);
+  });
+
   it("skips cards without statement/due days", () => {
     const bare = acc({ id: "bare", kind: "liability", subtype: "credit_card" });
     const ctx = { ...ctxWith(), active: [...accounts, bare] };

@@ -121,6 +121,7 @@ export interface CardPlan {
   planned: number; // one-off pending card txns inside the window
   total: number;
   estimateOnly: boolean; // window too far out — recurring only
+  alreadyBilled: boolean; // statement has cut — total is the real unpaid bill
 }
 
 export function oneOffsFor(allOneOffs: Txn[], m: string): Txn[] {
@@ -137,7 +138,7 @@ export function cardPlansFor(ctx: PlanContext, m: string): CardPlan[] {
     Number(m.slice(5, 7)) -
     1 -
     (today.getFullYear() * 12 + today.getMonth());
-  return parentCardsOf(active).flatMap((card) => {
+  return parentCardsOf(active).flatMap((card): CardPlan[] => {
     const s = card.statement_day,
       dd = card.due_day;
     if (!s || !dd) return [];
@@ -149,6 +150,24 @@ export function cardPlansFor(ctx: PlanContext, m: string): CardPlan[] {
           ? clampDate(st.getFullYear(), st.getMonth(), dd)
           : clampDate(st.getFullYear(), st.getMonth() + 1, dd);
       if (toISODate(due).slice(0, 7) !== m) continue;
+      if (st <= today) {
+        // statement already cut (a due day early next month, e.g. bills the
+        // 11th / due the 1st) — the bill is real, so carry the unpaid amount
+        // instead of projecting a window that has already closed
+        return [
+          {
+            card,
+            dueDate: due,
+            stmtDate: st,
+            unbilledNow: 0,
+            recurring: 0,
+            planned: 0,
+            total: cardDueNow(active, cycles, card),
+            estimateOnly: false,
+            alreadyBilled: true,
+          },
+        ];
+      }
       const windowStart = clampDate(st.getFullYear(), st.getMonth() - 1, s);
       const ids = subtreeIds(active, card);
       // real spends already made inside this window (cycle view counts since last cutoff)
@@ -189,6 +208,7 @@ export function cardPlansFor(ctx: PlanContext, m: string): CardPlan[] {
           planned,
           total: unbilledNow + recurring + planned,
           estimateOnly,
+          alreadyBilled: false,
         },
       ];
     }

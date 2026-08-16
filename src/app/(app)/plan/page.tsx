@@ -455,7 +455,11 @@ export default function PlanPage() {
                   bills {fmtDate(toISODate(cp.stmtDate))} · due {fmtDate(toISODate(cp.dueDate))}
                 </p>
                 <p className="text-[11px] text-ink-faint">
-                  {cp.estimateOnly
+                  {cp.alreadyBilled
+                    ? cp.total > 0
+                      ? <>bill is out — <span className="amount amount-inline text-debit">{formatPaise(cp.total)}</span> still unpaid</>
+                      : "bill is out — already paid"
+                    : cp.estimateOnly
                     ? "estimate — recurring card charges only, cycle hasn't started"
                     : [
                         cp.unbilledNow > 0 ? `${formatPaise(cp.unbilledNow)} already swiped` : null,
