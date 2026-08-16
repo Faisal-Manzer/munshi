@@ -1,17 +1,23 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 
-export default function LoginPage() {
+function Login() {
   const [loading, setLoading] = useState(false);
+  // where to land afterwards: an MCP consent request sends the user here and
+  // needs its own URL back, parameters and all
+  const next = useSearchParams().get("next");
 
   async function signIn() {
     setLoading(true);
     const supabase = createClient();
+    const callback = new URL("/auth/callback", location.origin);
+    if (next) callback.searchParams.set("next", next);
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${location.origin}/auth/callback` },
+      options: { redirectTo: callback.toString() },
     });
   }
 
@@ -35,5 +41,13 @@ export default function LoginPage() {
         </button>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <Login />
+    </Suspense>
   );
 }

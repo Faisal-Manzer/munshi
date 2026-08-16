@@ -13,7 +13,6 @@
  * (docs/MCP.md §1), so there is nothing to keep between tools.
  */
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   accountById,
   computeCardCycles,
@@ -69,9 +68,23 @@ export interface McpContext {
   nowSeconds: number;
   today: string;
   nowISO: string;
+  /** Wipes the unsealed ledger key. Called after every tool call, always. */
+  dispose?: () => void;
 }
 
-export type ContextFactory = () => Promise<McpContext>;
+/** What the transport knows about the caller. Kept structural so this package
+ *  does not depend on the SDK's auth types. */
+export interface CallerAuth {
+  extra?: Record<string, unknown>;
+}
+
+/**
+ * Resolved per tool call, from that call's auth info.
+ *
+ * Not from a closure: mcp-handler reuses a warm instance across requests, and
+ * a session captured when the server was built would be the wrong user's.
+ */
+export type ContextFactory = (auth: CallerAuth | undefined) => Promise<McpContext>;
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -156,17 +169,37 @@ interface ToolConfig {
   inputSchema: Record<string, z.ZodTypeAny>;
 }
 
-export function registerTools(server: McpServer, contextFor: ContextFactory): void {
+/**
+ * Just enough of an MCP server to register tools against.
+ *
+ * Structural on purpose: the adapter and the SDK each ship their own
+ * `McpServer` class, and they are not assignable to one another. Naming the
+ * one method used here keeps this package working with either, and off the
+ * SDK's dependency list entirely.
+ */
+export interface ToolRegistrar {
+  registerTool(name: string, config: never, handler: never): unknown;
+}
+
+export function registerTools(server: ToolRegistrar, contextFor: ContextFactory): void {
   const tool = (
     name: string,
     config: ToolConfig,
     run: (args: never, ctx: McpContext) => Promise<ToolResult>
   ) => {
-    server.registerTool(name, config as never, (async (args: never) => {
+    server.registerTool(name, config as never, (async (
+      args: never,
+      extra?: CallerAuth & { authInfo?: CallerAuth }
+    ) => {
+      let ctx: McpContext | null = null;
       try {
-        return await run(args, await contextFor());
+        ctx = await contextFor(extra?.authInfo);
+        return await run(args, ctx);
       } catch (e) {
         return failure(e);
+      } finally {
+        // the key exists for one call and no longer
+        ctx?.dispose?.();
       }
     }) as never);
   };

@@ -21,7 +21,11 @@ export async function GET(request: Request) {
         await supabase.auth.signOut();
         return NextResponse.redirect(`${origin}/login?error=not-allowed`);
       }
-      return NextResponse.redirect(`${origin}/`);
+      // only a path on this origin: an open redirect here would let a
+      // crafted sign-in link bounce a signed-in user anywhere
+      const next = searchParams.get("next");
+      const safe = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+      return NextResponse.redirect(`${origin}${safe}`);
     }
   }
   return NextResponse.redirect(`${origin}/login?error=auth`);
