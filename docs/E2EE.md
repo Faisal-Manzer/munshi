@@ -144,11 +144,15 @@ Decisions:
 
 ## 6. MCP: one URL, everything in the chat
 
-Product decision: **MCP is a single hosted URL** —
-`https://mcp.munshi.manzer.in/mcp` (Streamable HTTP, OAuth 2.1). The user
-pastes it into claude.ai or Claude Code and every action — reads, entries,
-plans, analytics, reconciliation — happens in the conversation. No CLI, no
-local install, no app visits per action.
+> **Built. `docs/MCP.md` is the specification; this section is the summary
+> and the places the built thing differs from what was planned here.**
+
+Product decision: **MCP is a single hosted URL** — `/api/mcp` on the app's
+own origin (Streamable HTTP, OAuth 2.1), not a separate `mcp.` host: it needs
+the same session, the same keys and the same deploy. The user pastes it into
+claude.ai or Claude Code and every action — reads, entries, plans, analytics,
+reconciliation — happens in the conversation. No CLI, no local install, no
+app visits per action.
 
 Background research verdict stands: a hosted server cannot serve E2EE data
 without being *granted* a key. So the key grant is built into the OAuth
@@ -161,22 +165,27 @@ consent itself, per ledger, honestly surfaced (see 6.2).
 2. Consent page = the web app's own client code: Supabase login (or existing
    session) + passphrase prompt (or silent device-key unlock, §3). The
    masterKey is unwrapped **in the browser** — the passphrase never travels.
-3. Page lists ledgers with checkboxes: "Let AI read & write: Personal ☑
-   Company ☐". For each checked ledger the browser seals that ledgerKey to
-   the MCP service's public key (mechanically identical to adding a member)
-   and uploads the wrapped key.
-4. OAuth completes; Claude holds a token scoped to that user + those
-   ledgers. From here on, everything lives in the chat.
+3. Page lists ledgers and the user picks **one**. The browser seals that
+   ledgerKey to the MCP service's public key (mechanically identical to
+   adding a member). One book per grant, not a checkbox list: a token that
+   opens two books is twice the blast radius for no gain, and switching is a
+   re-consent away.
+4. OAuth completes; Claude holds a token scoped to that user + that ledger.
+   From here on, everything lives in the chat.
 
 Managing the grant later = the same settings page: add/remove ledgers,
 revoke entirely. Grants expire (re-consent every 90 days, configurable).
 
 ### 6.2 Service-side custody (minimize what "hosted" costs)
 
-- Service keypair lives in KMS; wrapped ledgerKeys in Postgres. Per request:
-  unwrap in memory, sync + decrypt the ledger's oplog into an in-memory
-  replica (`@munshi/core`, same brain), serve the tool call, drop plaintext.
-  Nothing decrypted ever touches disk.
+- Service keypair in the environment (KMS when there is one). The wrapped
+  ledgerKey is **not** stored server-side: it rides inside the OAuth access
+  token, sealed to that keypair. Per request: unwrap in memory, load and
+  decrypt the book (`@munshi/core`, same brain), serve the tool call, wipe.
+  Nothing decrypted ever touches disk, and there is no session table to
+  breach — the trade is that a live access token is itself key material.
+- Rotating the service keypair invalidates every outstanding token and
+  proposal at once. That is the panic button.
 - **Honest boundary**: a consented ledger is readable by the Munshi service
   — that is inherent to "all actions via a hosted URL". Constraint 1 ("we
   cannot view data") holds absolutely for un-consented ledgers only. The
@@ -191,10 +200,11 @@ revoke entirely. Grants expire (re-consent every 90 days, configurable).
 Mirrors Vision §1 "AI proposes, user confirms":
 
 - Every read tool `readOnlyHint: true`; no generic run_sql tool.
-- **Two-phase writes**: `plan_changes(ops[]) → {change_set_id, diff, totals
-  before/after}` then `apply_changes(change_set_id)` — the id is the
-  idempotency key, expires in minutes; destructive ops additionally gated
-  by a boolean elicitation confirm (works in claude.ai).
+- **Two-phase writes**: `propose_*(…) → {preview, proposal_id}` then
+  `commit_proposal(proposal_id)`. The id *is* the proposal — the ops, sealed
+  — so there is no change-set table, the model cannot forge one, and commit
+  replays exactly what was previewed. It expires in 15 minutes and is refused
+  if the book moved underneath it.
 - Every MCP mutation logged with `source: "mcp"` + OAuth client — auditable
   and undoable in the app; op attribution comes free from the oplog (§5).
 - The in-app AI chat uses the same `@munshi/core` mutation API — one brain,
@@ -235,7 +245,13 @@ retire into it.
 Deliberate structural metadata only: user emails, ledger ids and member
 lists/roles, op sequence numbers and sizes, device ids, timestamps, KDF
 params, public keys. Never: amounts, names, descriptions, account
-structure, categories. This list goes verbatim into the product's security
+structure, categories.
+
+**With one exception, and it must be said in the same breath**: a ledger the
+user has connected to MCP is readable by the Munshi service while a token for
+it is live — that is what connecting means (§6.2). It is per-book, opt-in,
+and revocable, but for that book the sentence above does not hold. The
+security page has to carry this next to the promise, not in a footnote. This list goes verbatim into the product's security
 page — the E2EE promise is only as good as its honesty (Actual's plaintext
 bank-token surprise is the anti-pattern).
 

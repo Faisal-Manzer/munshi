@@ -23,6 +23,24 @@ preview diff, user confirms") implemented outside the app.
 | Preview content | Postings + before→after balances + plain-English explanation |
 | Code home | `packages/mcp` (pure) + `src/app/api/mcp`, `src/app/api/oauth` (routes) |
 
+**Status: built.** What differs from the plan below, and why:
+
+- `LedgerOp` was widened in place rather than adding a parallel `McpOp` union.
+  Core should not have a type named after one of its callers, and the web app
+  wants batched writes just as much.
+- The transport is `mcp-handler` (v2) rather than hand-rolled JSON-RPC, so
+  spec compliance is the adapter's problem. Its `McpServer` type differs from
+  the SDK's, so `registerTools` takes a structural registrar.
+- One ledger per grant. Switching books is a browser round-trip by
+  construction: the server can only unwrap the key its token carries.
+- MCP talks to Postgres with the service role and checks membership itself
+  (`src/lib/mcp/admin.ts`). An MCP request has no Supabase session to borrow,
+  and Supabase refresh tokens rotate on use, which a stateless server cannot
+  track. This moves enforcement out of RLS and into that file.
+- `applyAll` unwinds by compensation, not by a database transaction. PostgREST
+  gives one statement per request; the Postgres function that would make a
+  batch truly atomic is still the next migration.
+
 ### The trade being made, stated plainly
 
 E2EE today means the server never holds a key. This design breaks that: for
@@ -448,16 +466,41 @@ holds hashes only — no plaintext, no key — and doubles as the MCP audit log.
 
 ## 6. Build order
 
-1. `McpOp` union + `applyAll` in `packages/core` (blocks everything else).
-2. Move `src/lib/e2ee/codec.ts` into `packages/crypto` (or a new
-   `packages/store`) so a server-side driver can seal rows.
-3. `ServerLedgerStore` — implements `LedgerStore` against Supabase with the
-   user's JWT and the ledger key.
-4. OAuth AS routes + consent/unlock page.
-5. `packages/mcp`: session, proposal seal/open, preview renderer.
-6. Read tools (proves auth + decryption end to end, zero write risk).
-7. Entry writes — the full propose/commit loop on the simplest op.
-8. Accounts, loans, card EMIs, reconcile, templates.
-9. Members/sharing, behind the extra confirmation.
-10. Security-page copy update. Not optional — it is currently wrong the
-    moment step 4 ships.
+1. ~~`McpOp` union + `applyAll` in `packages/core`~~ — done as a widened
+   `LedgerOp`.
+2. ~~Move the codec out of `src/lib`~~ — done: `packages/store`, which now
+   also holds the driver and `loadLedger`.
+3. ~~A server-usable store~~ — done: the existing Supabase driver moved into
+   `@munshi/store`, so there is one driver, not two.
+4. ~~OAuth AS routes + consent/unlock page.~~ Done.
+5. ~~`packages/mcp`: session, proposal seal/open, preview renderer.~~ Done.
+6. ~~Read tools.~~ Done: accounts, entries, card cycles, templates.
+7. ~~Entry writes — the full propose/commit loop.~~ Done.
+8. ~~Accounts, loans, card EMIs, reconcile.~~ Done. Templates beyond loans
+   and card EMIs are still only readable.
+9. **Members/sharing, behind the extra confirmation.** Not started.
+10. **Security-page copy.** `docs/E2EE.md` §6 and §8 now say this honestly;
+    the user-facing page does not exist yet and is the last thing owed before
+    anyone connects a client to a real book.
+
+Also outstanding: a Postgres function for atomic batches, and the deferred
+read tools (`month_plan`, `month_actuals`, `liquid_outlook`, `emi_status`,
+`balances`) — the calc layer already exposes all of them.
+
+## 7. Running it
+
+    MCP_SEAL_PUBLIC_KEY=      # base64 X25519 public
+    MCP_SEAL_PRIVATE_KEY=     # base64 X25519 private
+    MCP_JWT_SECRET=           # 32+ random bytes
+    SUPABASE_SERVICE_ROLE_KEY=
+
+Generate the pair with `x25519.utils.randomSecretKey()` from `@noble/curves`.
+Rotating it is the global revoke.
+
+Then apply migrations 012 and 013, and add `https://<host>/api/mcp` as a
+connector. Discovery, the 401 challenge and the propose/commit loop can be
+checked without a client:
+
+    curl -s localhost:3000/.well-known/oauth-protected-resource
+    curl -si -X POST localhost:3000/api/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+    #   -> 401 + WWW-Authenticate with resource_metadata
