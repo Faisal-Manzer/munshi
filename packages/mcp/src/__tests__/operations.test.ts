@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Account } from "@munshi/core";
 import type { LedgerSnapshot } from "@munshi/store";
-import { proposeAccount, proposeReconcile, renderPreview } from "@munshi/mcp";
+import {
+  proposeAccount,
+  proposeCardEmi,
+  proposeLoan,
+  proposeReconcile,
+  renderPreview,
+} from "@munshi/mcp";
 
 const account = (over: Partial<Account> & { id: string; name: string }): Account => ({
   user_id: "u1",
@@ -147,5 +153,176 @@ describe("proposeReconcile", () => {
     );
     const update = op.ops.find((o) => o.kind === "account.update");
     expect(update && "patch" in update && update.patch.reported_balance_paise).toBe(-50000);
+  });
+});
+
+const card = account({
+  id: "card",
+  name: "Amazon Pay ICICI",
+  kind: "liability",
+  subtype: "credit_card",
+  statement_day: 18,
+  due_day: 5,
+  credit_limit_paise: 20000000,
+  is_liquid: false,
+});
+const withCard: LedgerSnapshot = { ...snapshot, accounts: [...snapshot.accounts, card] };
+
+describe("proposeLoan", () => {
+  const base = { ledgerId: "l1", counterAccountId: "bank", today: "2026-08-17" };
+
+  it("creates the account, the disbursal and the repayment as one thing", () => {
+    const op = proposeLoan(withCard, {
+      ...base,
+      direction: "borrowed",
+      name: "Bike loan — HDFC",
+      principalPaise: 10000000,
+      ratePercent: 10,
+      months: 12,
+      firstDueISO: "2026-09-05",
+    }, mint);
+    expect(op.ops.map((o) => o.kind)).toEqual([
+      "account.create",
+      "entry.create",
+      "template.create",
+    ]);
+  });
+
+  it("grows a liability when borrowing and cash along with it", () => {
+    const op = proposeLoan(withCard, {
+      ...base,
+      direction: "borrowed",
+      name: "Bike loan",
+      principalPaise: 10000000,
+      ratePercent: 10,
+      months: 12,
+      firstDueISO: "2026-09-05",
+    }, mint);
+    expect(op.preview.deltas).toContainEqual({
+      account: "Bike loan",
+      beforePaise: 0,
+      afterPaise: 10000000, // owed
+    });
+    expect(op.preview.deltas).toContainEqual({
+      account: "ICICI main",
+      beforePaise: 23000000,
+      afterPaise: 33000000,
+    });
+  });
+
+  it("takes money out of the bank when lending", () => {
+    const op = proposeLoan(withCard, {
+      ...base,
+      direction: "lent",
+      name: "Ahmed",
+      principalPaise: 10000000,
+      ratePercent: 0,
+      months: 10,
+      firstDueISO: "2026-09-05",
+    }, mint);
+    expect(op.preview.deltas).toContainEqual({
+      account: "ICICI main",
+      beforePaise: 23000000,
+      afterPaise: 13000000,
+    });
+    expect(op.preview.deltas).toContainEqual({
+      account: "Ahmed",
+      beforePaise: 0,
+      afterPaise: 10000000, // they owe you
+    });
+  });
+
+  it("says out loud that the interest split is not posted", () => {
+    const op = proposeLoan(withCard, {
+      ...base,
+      direction: "borrowed",
+      name: "Bike loan",
+      principalPaise: 10000000,
+      ratePercent: 10,
+      months: 12,
+      firstDueISO: "2026-09-05",
+    }, mint);
+    expect(op.preview.warnings.join(" ")).toContain("not booked as an expense");
+  });
+
+  it("refuses a principal of zero", () => {
+    expect(() =>
+      proposeLoan(withCard, {
+        ...base,
+        direction: "borrowed",
+        name: "x",
+        principalPaise: 0,
+        ratePercent: 10,
+        months: 12,
+        firstDueISO: "2026-09-05",
+      }, mint)
+    ).toThrow(/greater than zero/);
+  });
+});
+
+describe("proposeCardEmi", () => {
+  const base = {
+    ledgerId: "l1",
+    cardId: "card",
+    expenseAccountId: "food",
+    description: "MacBook",
+    firstBillingISO: "2026-09-18",
+    today: "2026-08-17",
+  };
+
+  it("adds a template and moves nothing today", () => {
+    const op = proposeCardEmi(withCard, { ...base, totalPaise: 12000000, months: 6 }, mint);
+    expect(op.ops.map((o) => o.kind)).toEqual(["template.create"]);
+    expect(op.preview.deltas).toEqual([]);
+    expect(op.preview.explanation).toContain("not a new spend each month");
+  });
+
+  it("refuses when the purchase is already in the book", () => {
+    const already: LedgerSnapshot = {
+      ...withCard,
+      transactions: [
+        ...withCard.transactions,
+        { id: "t1", ledger_id: "l1", date: "2026-08-10", description: "MacBook", status: "done", tag: null, recurring_template_id: null, reimburse_account_id: null, reimburse_amount_paise: null, notes: null },
+      ],
+      postings: [
+        ...withCard.postings,
+        { id: "p3", transaction_id: "t1", account_id: "card", amount_paise: -12000000 },
+        { id: "p4", transaction_id: "t1", account_id: "food", amount_paise: 12000000 },
+      ],
+    };
+    expect(() => proposeCardEmi(already, { ...base, totalPaise: 12000000, months: 6 }, mint)).toThrow(
+      /count the money twice/
+    );
+    // told to reverse it, the same proposal carries the reversal
+    const op = proposeCardEmi(
+      already,
+      { ...base, totalPaise: 12000000, months: 6, duplicate: "reverse" },
+      mint
+    );
+    expect(op.ops.map((o) => o.kind)).toEqual(["entry.create", "template.create"]);
+    expect(op.preview.deltas).toContainEqual({
+      account: "Amazon Pay ICICI",
+      beforePaise: 12000000,
+      afterPaise: 0,
+    });
+  });
+
+  it("warns when the total does not divide evenly", () => {
+    const op = proposeCardEmi(withCard, { ...base, totalPaise: 10000, months: 3 }, mint);
+    expect(op.preview.warnings.join(" ")).toContain("does not divide evenly");
+  });
+
+  it("posts a processing fee as its own entry", () => {
+    const op = proposeCardEmi(
+      withCard,
+      { ...base, totalPaise: 12000000, months: 6, processingFeePaise: 59000 },
+      mint
+    );
+    expect(op.ops.map((o) => o.kind)).toEqual(["template.create", "entry.create"]);
+    expect(op.preview.deltas).toContainEqual({
+      account: "Amazon Pay ICICI",
+      beforePaise: 0,
+      afterPaise: 59000,
+    });
   });
 });

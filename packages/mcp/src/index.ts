@@ -12,3 +12,5 @@ export * from "./simulate";
 export * from "./operations/types";
 export * from "./operations/accounts";
 export * from "./operations/reconcile";
+export * from "./operations/loans";
+export * from "./operations/cards";
