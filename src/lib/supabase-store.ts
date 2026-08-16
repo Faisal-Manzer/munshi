@@ -11,10 +11,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   Account,
   AccountSpec,
+  EntryOp,
   LedgerOp,
   LedgerStore,
   NewAccount,
   NewTemplate,
+  OpResult,
   PostingDraft,
   RecurringTemplate,
   Transaction,
@@ -68,8 +70,16 @@ export function createSupabaseStore(
   // ids are minted client-side when encrypting: the payload's AAD binds to the
   // row id, so the id has to exist before the ciphertext does
   const newId = () => crypto.randomUUID();
-  return {
-    async apply(op: LedgerOp): Promise<string> {
+
+  /** The subset of `current` covering the keys a patch touched. */
+  function revertOf<T extends object>(current: T, patch: Partial<T>): Partial<T> {
+    const back: Partial<T> = {};
+    for (const k of Object.keys(patch) as (keyof T)[]) back[k] = current[k];
+    return back;
+  }
+
+  const store: LedgerStore = {
+    async apply(op: EntryOp): Promise<string> {
       if (op.kind === "entry.create") {
         const id = ledgerKey ? newId() : undefined;
         const { data: txn, error } = await supabase
@@ -114,6 +124,120 @@ export function createSupabaseStore(
         .insert(postingRows(op.transactionId, op.postings, ledgerKey));
       if (pe) throw pe;
       return op.transactionId;
+    },
+
+    /**
+     * All or nothing, without a transaction to lean on.
+     *
+     * PostgREST gives one statement per request, so a batch is applied step by
+     * step and unwound in reverse if any step fails. That undo is real for
+     * creates (delete the row) and for patches (write the old values back,
+     * which the op carries because re-sealing a payload needs them anyway).
+     *
+     * It is not real for a delete — nothing can restore a deleted row — so
+     * deletes are moved to the end and run only once everything else has
+     * landed. A failure can therefore leave writes applied but nothing lost.
+     * Results are returned in the caller's original order regardless.
+     *
+     * The honest limit: a crash between two steps skips the undo entirely.
+     * Closing that needs a Postgres function taking the whole sealed batch,
+     * which is the next migration (docs/MCP.md §6).
+     */
+    async applyAll(ops: LedgerOp[]): Promise<OpResult[]> {
+      const deletes = ops.filter((o) => o.kind === "entry.delete");
+      const ordered = [...ops.filter((o) => o.kind !== "entry.delete"), ...deletes];
+      const undo: (() => Promise<void>)[] = [];
+      const done = new Map<LedgerOp, OpResult>();
+
+      const dropRow = (table: string, id: string) => async () => {
+        await supabase.from(table).delete().eq("id", id);
+      };
+
+      try {
+        for (const op of ordered) {
+          switch (op.kind) {
+            case "entry.create":
+            case "entry.rewrite": {
+              const before =
+                op.kind === "entry.rewrite"
+                  ? await supabase
+                      .from("postings")
+                      .select("*")
+                      .eq("transaction_id", op.transactionId)
+                  : null;
+              const id = await store.apply(op);
+              if (op.kind === "entry.create") {
+                undo.push(dropRow("transactions", id));
+              } else if (before?.data) {
+                // put the old legs back; the txn row itself is patched, not moved
+                const rows = before.data;
+                undo.push(async () => {
+                  await supabase.from("postings").delete().eq("transaction_id", id);
+                  await supabase.from("postings").insert(rows);
+                });
+              }
+              done.set(op, { kind: op.kind, id });
+              break;
+            }
+            case "account.create": {
+              const created = await store.createAccount(op.account);
+              undo.push(dropRow("accounts", created.id));
+              done.set(op, { kind: op.kind, id: created.id });
+              break;
+            }
+            case "account.update": {
+              const back = revertOf(op.current, op.patch);
+              await store.updateAccount(op.current, op.patch);
+              undo.push(async () => {
+                await store.updateAccount({ ...op.current, ...op.patch }, back);
+              });
+              done.set(op, { kind: op.kind, id: op.current.id });
+              break;
+            }
+            case "template.create": {
+              const id = await store.createTemplate(op.template);
+              undo.push(dropRow("recurring_templates", id));
+              done.set(op, { kind: op.kind, id });
+              break;
+            }
+            case "template.update": {
+              const back = revertOf(op.current, op.patch);
+              await store.updateTemplate(op.current, op.patch);
+              undo.push(async () => {
+                await store.updateTemplate({ ...op.current, ...op.patch }, back);
+              });
+              done.set(op, { kind: op.kind, id: op.current.id });
+              break;
+            }
+            case "entry.patch": {
+              const back = revertOf(op.current, op.patch);
+              await store.patchTransaction(op.current, op.patch);
+              undo.push(async () => {
+                await store.patchTransaction({ ...op.current, ...op.patch }, back);
+              });
+              done.set(op, { kind: op.kind, id: op.current.id });
+              break;
+            }
+            case "entry.delete": {
+              await store.deleteTransaction(op.transactionId);
+              done.set(op, { kind: op.kind, id: op.transactionId });
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        // best effort: an undo that itself fails must not mask the real error
+        for (const step of undo.reverse()) {
+          try {
+            await step();
+          } catch {
+            /* keep unwinding */
+          }
+        }
+        throw e;
+      }
+
+      return ops.map((op) => done.get(op)!);
     },
 
     async createAccount(account: NewAccount): Promise<Account> {
@@ -223,4 +347,6 @@ export function createSupabaseStore(
       return { ...(data as Account), name: spec.name };
     },
   };
+
+  return store;
 }

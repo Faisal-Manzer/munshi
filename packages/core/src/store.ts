@@ -55,7 +55,76 @@ export interface EntryRewriteOp {
   postings: PostingDraft[];
 }
 
-export type LedgerOp = EntryCreateOp | EntryRewriteOp;
+/** The two ops that write postings, and the only ones `apply` accepts. */
+export type EntryOp = EntryCreateOp | EntryRewriteOp;
+
+/** Edit a transaction's own fields, leaving its legs alone. */
+export interface EntryPatchOp {
+  kind: "entry.patch";
+  current: Transaction;
+  patch: Partial<Transaction>;
+}
+
+/** Delete a transaction and, by cascade, its postings. */
+export interface EntryDeleteOp {
+  kind: "entry.delete";
+  transactionId: string;
+}
+
+/**
+ * Ops that create a row carry its id, minted by the caller.
+ *
+ * Two reasons, both load-bearing: an encrypted payload's AAD binds to the row
+ * id, so the id must exist before the ciphertext does; and a batch that
+ * creates an account and then posts against it needs to name that account
+ * before any of it has been written.
+ */
+export interface AccountCreateOp {
+  kind: "account.create";
+  account: NewAccount & { id: string };
+}
+
+export interface AccountUpdateOp {
+  kind: "account.update";
+  current: Account;
+  patch: Partial<Account>;
+}
+
+export interface TemplateCreateOp {
+  kind: "template.create";
+  template: NewTemplate & { id: string };
+}
+
+export interface TemplateUpdateOp {
+  kind: "template.update";
+  current: RecurringTemplate;
+  patch: Partial<RecurringTemplate>;
+}
+
+/**
+ * Every write the product can perform, as data.
+ *
+ * A financial operation is rarely one row: a loan is an account plus a
+ * disbursal entry plus a repayment template; a reconcile is an adjustment
+ * entry plus a reported-balance stamp. Modelling those as a list of ops is
+ * what lets them be previewed as a unit, approved once, and applied
+ * atomically — and it is the form an encrypted oplog carries (docs/E2EE.md
+ * §4). The MCP server's proposals are literally `LedgerOp[]` (docs/MCP.md §2).
+ */
+export type LedgerOp =
+  | EntryOp
+  | EntryPatchOp
+  | EntryDeleteOp
+  | AccountCreateOp
+  | AccountUpdateOp
+  | TemplateCreateOp
+  | TemplateUpdateOp;
+
+/** What a driver reports back per op: the row's id for creates, null otherwise. */
+export interface OpResult {
+  kind: LedgerOp["kind"];
+  id: string | null;
+}
 
 /** Identifies an account that must exist before an op can reference it. */
 export interface AccountSpec {
@@ -72,8 +141,18 @@ export type NewAccount = Omit<Account, "id" | "user_id" | "payload"> & { id?: st
 export type NewTemplate = Omit<RecurringTemplate, "id" | "payload"> & { id?: string };
 
 export interface LedgerStore {
-  /** Persist one whole operation atomically; returns the transaction id. */
-  apply(op: LedgerOp): Promise<string>;
+  /** Persist one entry op atomically; returns the transaction id. */
+  apply(op: EntryOp): Promise<string>;
+
+  /**
+   * Persist a whole financial operation: several ops, all or nothing, in the
+   * order given. Results line up with the input.
+   *
+   * This is the write path for anything that spans more than one row — and
+   * the only one the MCP server uses, because a proposal the user approved as
+   * one thing must not land as half of one.
+   */
+  applyAll(ops: LedgerOp[]): Promise<OpResult[]>;
 
   /**
    * Everything below is a mutation that used to be written straight to

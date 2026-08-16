@@ -20,6 +20,10 @@ function fakeStore() {
       ops.push(op);
       return op.kind === "entry.create" ? `txn-${ops.length}` : op.transactionId;
     },
+    async applyAll(batch) {
+      ops.push(...batch);
+      return batch.map((op) => ({ kind: op.kind, id: null }));
+    },
     async ensureAccount(spec) {
       ensured.push(spec);
       return { id: "equity-1", name: spec.name } as Account;
