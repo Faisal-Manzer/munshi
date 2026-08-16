@@ -49,6 +49,14 @@ export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /** Best-effort scrub of key material once it is no longer needed. */
+/** Hex sha256. Used to identify a value without storing it — MCP records which
+ *  proposals were committed by hash, never by content (docs/MCP.md §5). */
+export function sha256Hex(bytes: Uint8Array): string {
+  return Array.from(sha256(bytes))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export function wipe(...arrays: Uint8Array[]): void {
   for (const a of arrays) a.fill(0);
 }
