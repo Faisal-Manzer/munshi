@@ -9,3 +9,6 @@ export * from "./errors";
 export * from "./preview";
 export * from "./proposal";
 export * from "./simulate";
+export * from "./operations/types";
+export * from "./operations/accounts";
+export * from "./operations/reconcile";
