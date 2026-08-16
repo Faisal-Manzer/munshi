@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLedger } from "@/lib/use-ledger";
-import { decryptPosting, decryptTemplate, decryptTransaction } from "@/lib/e2ee/codec";
+import { decryptPosting, decryptTemplate, decryptTransaction } from "@munshi/store";
 import { Amount } from "@/components/amount";
 import { Field } from "@/components/field";
 import { Select } from "@/components/select";

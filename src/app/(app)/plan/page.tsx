@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLedger, accountById } from "@/lib/use-ledger";
-import { decryptPosting, decryptTemplate, decryptTransaction } from "@/lib/e2ee/codec";
+import { decryptPosting, decryptTemplate, decryptTransaction } from "@munshi/store";
 import { Amount } from "@/components/amount";
 import { Headline } from "@/components/headline";
 import { SideBlock } from "@/components/side-block";

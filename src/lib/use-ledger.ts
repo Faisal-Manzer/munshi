@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { createSupabaseStore } from "@/lib/supabase-store";
+import { createSupabaseStore } from "@munshi/store";
 import { useActiveLedger } from "@/lib/ledger-context";
 import { useLedgerKey } from "@/lib/e2ee/use-ledger-key";
-import { decryptAccount, decryptPosting, decryptTransaction } from "@/lib/e2ee/codec";
+import { decryptAccount, decryptPosting, decryptTransaction } from "@munshi/store";
 import { computeBalances, computeCardCycles } from "@munshi/core";
 import type {
   Account,

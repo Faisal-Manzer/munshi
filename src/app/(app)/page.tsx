@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLedger, accountById } from "@/lib/use-ledger";
-import { decryptPosting, decryptTemplate, decryptTransaction } from "@/lib/e2ee/codec";
+import { decryptPosting, decryptTemplate, decryptTransaction } from "@munshi/store";
 import { amountMatches, createEntry, emiActive, emiInfo, fmtMonth, formatPaise, parseRupees, rewriteEntry, subtreeBalance, toISODate } from "@munshi/core";
 import type { EntryInput } from "@munshi/core";
 import { Amount } from "@/components/amount";

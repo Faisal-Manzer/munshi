@@ -8,7 +8,7 @@ import {
   encryptAccount,
   encryptPosting,
   encryptTransaction,
-} from "@/lib/e2ee/codec";
+} from "@munshi/store";
 
 const key = randomBytes(32);
 

@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Posting, Transaction } from "@munshi/core";
-import { decryptPosting, decryptTransaction } from "@/lib/e2ee/codec";
+import { decryptPosting, decryptTransaction } from "@munshi/store";
 
 export interface TitleSuggestion {
   title: string;

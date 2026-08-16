@@ -17,7 +17,7 @@ import {
   encryptPosting,
   encryptTemplate,
   encryptTransaction,
-} from "@/lib/e2ee/codec";
+} from "@munshi/store";
 
 export interface EncryptProgress {
   step: string;

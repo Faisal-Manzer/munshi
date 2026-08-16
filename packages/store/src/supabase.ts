@@ -27,7 +27,7 @@ import {
   encryptPosting,
   encryptTemplate,
   encryptTransaction,
-} from "@/lib/e2ee/codec";
+} from "@munshi/store";
 
 function txnRow(txn: TransactionDraft) {
   return {
