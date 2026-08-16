@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emiActive, emiInfo, fmtMonth } from "@munshi/core";
+import { amortize, emiActive, emiInfo, fmtMonth } from "@munshi/core";
 import type { RecurringTemplate } from "@munshi/core";
 
 function tpl(patch: Partial<RecurringTemplate>): RecurringTemplate {
@@ -106,5 +106,50 @@ describe("fmtMonth", () => {
   it("formats a month as short-month + year", () => {
     expect(fmtMonth("2026-11-05")).toMatch(/Nov.*2026/);
     expect(fmtMonth("2026-01")).toMatch(/Jan.*2026/);
+  });
+});
+
+describe("amortize", () => {
+  const loan = amortize(10000000, 10, 12, "2026-09-05"); // ₹1L, 10% p.a., 12m
+
+  it("clears the principal exactly", () => {
+    expect(loan.rows.at(-1)!.outstandingPaise).toBe(0);
+    expect(loan.rows.reduce((s, r) => s + r.principalPaise, 0)).toBe(10000000);
+  });
+
+  it("charges interest on the reducing balance", () => {
+    expect(loan.rows[0].interestPaise).toBe(83333); // 1L × 10%/12
+    expect(loan.rows[0].interestPaise).toBeGreaterThan(loan.rows[11].interestPaise);
+  });
+
+  it("keeps every installment but the last identical", () => {
+    const middle = new Set(loan.rows.slice(0, 11).map((r) => r.emiPaise));
+    expect(middle.size).toBe(1);
+    expect(loan.emiPaise).toBe(879159);
+  });
+
+  it("adds up", () => {
+    expect(loan.totalPaidPaise).toBe(loan.totalInterestPaise + 10000000);
+  });
+
+  it("walks the due dates a month at a time, clamping short months", () => {
+    expect(loan.rows[0].dateISO).toBe("2026-09-05");
+    expect(loan.rows[11].dateISO).toBe("2027-08-05");
+    expect(amortize(120000, 0, 3, "2026-01-31").rows.map((r) => r.dateISO)).toEqual([
+      "2026-01-31",
+      "2026-02-28",
+      "2026-03-31",
+    ]);
+  });
+
+  it("handles an interest-free loan without dividing by zero", () => {
+    const free = amortize(120000, 0, 3, "2026-09-01");
+    expect(free.emiPaise).toBe(40000);
+    expect(free.totalInterestPaise).toBe(0);
+    expect(free.rows.at(-1)!.outstandingPaise).toBe(0);
+  });
+
+  it("refuses a loan with no installments", () => {
+    expect(() => amortize(1000, 10, 0, "2026-09-01")).toThrow(/at least one/);
   });
 });

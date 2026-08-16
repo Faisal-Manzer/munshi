@@ -3,7 +3,7 @@
 // pages both call these so the two screens can never disagree.
 
 import { emiActive } from "./emi";
-import { toISODate } from "./ledger";
+import { clampDate, toISODate } from "./ledger";
 import type {
   Account,
   AccountBalance,
@@ -17,12 +17,6 @@ export type Txn = Transaction & { postings: Posting[] };
 
 export function accountById(accounts: Account[], id: string | null) {
   return accounts.find((a) => a.id === id);
-}
-
-/** Last day of the month clamps days 29–31 in short months. */
-export function clampDate(y: number, m: number, day: number): Date {
-  const last = new Date(y, m + 1, 0).getDate();
-  return new Date(y, m, Math.min(day, last));
 }
 
 // ---- template classification ------------------------------------------------

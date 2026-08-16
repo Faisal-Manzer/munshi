@@ -60,6 +60,12 @@ export function nextOccurrence(dayOfMonth: number, from: Date): Date {
   return clamp(from.getFullYear(), from.getMonth() + 1);
 }
 
+/** Last day of the month clamps days 29–31 in short months. */
+export function clampDate(y: number, m: number, day: number): Date {
+  const last = new Date(y, m + 1, 0).getDate();
+  return new Date(y, m, Math.min(day, last));
+}
+
 export function stripTime(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
