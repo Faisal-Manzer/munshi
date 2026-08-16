@@ -14,3 +14,4 @@ export * from "./operations/accounts";
 export * from "./operations/reconcile";
 export * from "./operations/loans";
 export * from "./operations/cards";
+export * from "./commit";
