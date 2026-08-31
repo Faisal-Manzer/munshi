@@ -588,10 +588,14 @@ One account, many books (VISION §2–§3):
 
 - Google OAuth via Supabase (`signInWithOAuth`, redirect to
   `/auth/callback`, code exchanged server-side for a session).
-- Optional allow-list: `ALLOWED_EMAILS` env var (comma-separated). Anyone
-  else is signed out at the door and bounced to
-  `/login?error=not-allowed`. Empty = anyone with Google can sign in (into
-  their own private ledger).
+- No app-level allow-list. Anyone with a Google account can sign in, and
+  lands in their own private ledger: RLS scopes every table through
+  `is_ledger_member(ledger_id)`, so a stranger is a member of nothing and
+  sees an empty app. An `ALLOWED_EMAILS` check used to live in
+  `/auth/callback`; it was removed because it failed open when unset, ran
+  only after the `auth.users` row had already been created, and was never
+  re-checked per request. Restricting who may sign up belongs on
+  `auth.users` in Postgres, where it cannot fail open.
 - The app layout redirects unauthenticated visitors to `/login`.
 
 ## 17. UI component system
@@ -656,8 +660,9 @@ bottom, and close on outside click, scroll, resize, or Escape.
   after every write.
 - **Deploy**: GitHub → Vercel (auto-deploy on push to `main`) → custom
   domain behind Cloudflare DNS. Environment: `NEXT_PUBLIC_SUPABASE_URL`,
-  `NEXT_PUBLIC_SUPABASE_ANON_KEY`, optional `ALLOWED_EMAILS` (see
-  `.env.example`). Supabase Auth URL Configuration must list the production
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` (see `.env.example`), plus
+  `SUPABASE_SERVICE_ROLE_KEY` and the three `MCP_*` secrets for the MCP
+  endpoint. Supabase Auth URL Configuration must list the production
   domain (Site URL + redirect allow-list).
 - Personal seed data lives in `supabase/seed/` which is **gitignored** —
   the repository is public and carries no personal or financial data.

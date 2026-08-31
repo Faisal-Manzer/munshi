@@ -29,8 +29,9 @@ screen, formula, and data-model detail.
    Up → Google → Enable*. Create an OAuth client in Google Cloud Console
    (type: Web application) with redirect URI
    `https://<ref>.supabase.co/auth/v1/callback`, paste client ID/secret into
-   Supabase. Add every email you use to `ALLOWED_EMAILS` in `.env.local` —
-   anyone else is signed out at the door.
+   Supabase. Anyone with a Google account can then sign in — and lands in
+   their own empty book, because every table is scoped to ledger membership
+   by RLS. Restrict signups on `auth.users` in Postgres if you need to.
 
 3. **Run locally**
 
