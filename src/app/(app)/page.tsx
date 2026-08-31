@@ -6,7 +6,7 @@ import { decryptPosting, decryptTemplate, decryptTransaction } from "@munshi/sto
 import { amountMatches, createEntry, emiActive, emiInfo, fmtMonth, formatPaise, parseRupees, rewriteEntry, subtreeBalance, toISODate } from "@munshi/core";
 import type { EntryInput } from "@munshi/core";
 import { Amount } from "@/components/amount";
-import { AccountSelect, NEW_CATEGORY, accountGroups } from "@/components/account-select";
+import { AccountSelect, NEW_CATEGORY, NEW_INCOME, accountGroups } from "@/components/account-select";
 import { Select } from "@/components/select";
 import { TitleInput, useTitleSuggestions } from "@/components/title-input";
 import { DateInput } from "@/components/date-input";
@@ -1700,7 +1700,8 @@ function QuickAddRow({
   const [toId, setToId] = useState("");
   const [tag, setTag] = useState("");
   const [note, setNote] = useState("");
-  const [newCatOpen, setNewCatOpen] = useState(false);
+  // which "＋ New …" row was picked, if any — the same modal creates both
+  const [creating, setCreating] = useState<"expense" | "income" | null>(null);
   const [planned, setPlanned] = useState<boolean | null>(null); // null = follow the date
   const suggestions = useTitleSuggestions(supabase, ledgerId, ledgerKey);
 
@@ -1715,13 +1716,14 @@ function QuickAddRow({
   const defaultCat = accounts.find((a) => a.kind === "expense"); // first category = default destination
 
   async function createCategory(name: string) {
-    if (!name.trim()) return;
+    if (!name.trim() || !creating) return;
+    const income = creating === "income";
     try {
       const acc = await store.createAccount({
         ledger_id: ledgerId!,
         name: name.trim(),
-        kind: "expense",
-        subtype: "general_expense",
+        kind: income ? "income" : "expense",
+        subtype: income ? "other_income" : "general_expense",
         parent_id: null,
         statement_day: null,
         due_day: null,
@@ -1734,7 +1736,8 @@ function QuickAddRow({
         is_liquid: false,
       });
       await onDone();
-      setToId(acc.id);
+      if (income) setFromId(acc.id);
+      else setToId(acc.id);
     } catch (e) {
       onError(e instanceof Error ? e.message : "failed");
     }
@@ -1786,11 +1789,13 @@ function QuickAddRow({
         </td>
         <td>
           <div className="flex items-center">
-            <AccountSelect value={fromId} onChange={setFromId} choices={fromChoices}
+            <AccountSelect value={fromId} choices={fromChoices} allowCreate="income"
+              onChange={(v) => (v === NEW_INCOME ? setCreating("income") : setFromId(v))}
               placeholder="from…" className="w-1/2" />
             <span className="text-ink-faint text-xs">→</span>
-            <AccountSelect value={toId} choices={toChoices} allowCreate placeholder={defaultCat?.name ?? "category…"}
-              onChange={(v) => (v === NEW_CATEGORY ? setNewCatOpen(true) : setToId(v))}
+            <AccountSelect value={toId} choices={toChoices} allowCreate="expense"
+              placeholder={defaultCat?.name ?? "category…"}
+              onChange={(v) => (v === NEW_CATEGORY ? setCreating("expense") : setToId(v))}
               className="w-1/2" />
           </div>
         </td>
@@ -1816,13 +1821,15 @@ function QuickAddRow({
         </td>
       </tr>
       <InputModal
-        open={newCatOpen}
-        title="New category"
-        label="Category name (e.g. Swiggy, Transport, Groceries)"
-        placeholder="Category"
+        open={creating !== null}
+        title={creating === "income" ? "New income source" : "New category"}
+        label={creating === "income"
+          ? "Where the money comes from (e.g. Salary, Freelance, Interest)"
+          : "Category name (e.g. Swiggy, Transport, Groceries)"}
+        placeholder={creating === "income" ? "Income source" : "Category"}
         submitLabel="Create"
         onSubmit={createCategory}
-        onClose={() => setNewCatOpen(false)}
+        onClose={() => setCreating(null)}
       />
     </>
   );

@@ -16,6 +16,15 @@ const GROUPS: { label: string; subtypes: AccountSubtype[] }[] = [
 ];
 
 export const NEW_CATEGORY = "__new_category__";
+export const NEW_INCOME = "__new_income__";
+
+/** Which "＋ New …" row a select offers, if any. */
+export type CreateOption = "expense" | "income";
+
+const CREATE_ROW: Record<CreateOption, { value: string; label: string }> = {
+  expense: { value: NEW_CATEGORY, label: "＋ New category…" },
+  income: { value: NEW_INCOME, label: "＋ New income source…" },
+};
 
 export function accountGroups(choices: Account[]): SelectGroup[] {
   return GROUPS.map((g) => ({
@@ -27,19 +36,20 @@ export function accountGroups(choices: Account[]): SelectGroup[] {
 }
 
 export function AccountSelect({
-  value, onChange, choices, placeholder = "—", allowCreate = false, className = "", chrome = false,
+  value, onChange, choices, placeholder = "—", allowCreate, className = "", chrome = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   choices: Account[];
   placeholder?: string;
-  allowCreate?: boolean;
+  /** Offer an inline create row for this kind of account. */
+  allowCreate?: CreateOption;
   className?: string;
   chrome?: boolean;
 }) {
   const groups = accountGroups(choices);
   if (allowCreate) {
-    groups.push({ options: [{ value: NEW_CATEGORY, label: "＋ New category…" }] });
+    groups.push({ options: [CREATE_ROW[allowCreate]] });
   }
   return (
     <Select value={value} onChange={onChange} groups={groups}
