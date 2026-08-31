@@ -357,7 +357,15 @@ export default function BookPage() {
     r.txn.postings.some((p) => accountById(accounts, p.account_id)?.kind === "equity");
   const openingRows = rows.filter(isOpening) as TxnRow[];
   let monthRows = rows.filter((r) => !isOpening(r));
-  monthRows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  // newest first: the entry you just made, and the day you are living in, are
+  // what you came to look at — history reads downward from there
+  const kindRank = (r: Row) => (r.kind === "txn" ? 0 : r.kind === "virtual" ? 1 : 2);
+  const seq = (r: Row) => (r.kind === "txn" ? (r.txn.created_at ?? "") : "");
+  monthRows.sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+    if (kindRank(a) !== kindRank(b)) return kindRank(a) - kindRank(b);
+    return seq(a) < seq(b) ? 1 : seq(a) > seq(b) ? -1 : 0;
+  });
 
   // ---- filter & search
   const filtering = Boolean(query.trim() || fAcct || fTag || fStatus);
@@ -707,37 +715,6 @@ export default function BookPage() {
             <tbody>
               <QuickAddRow accounts={active} supabase={supabase} store={store} ledgerId={ledgerId} ledgerKey={ledgerKey} onDone={refreshAll}
                 onAdded={(id) => setJustAdded((l) => [...l, id])} onError={setError} />
-              {!filtering && openingRows.length > 0 && (
-                <tr className="bg-paper">
-                  <td className="px-2 py-1.5 amount text-ink-faint whitespace-nowrap">
-                    {fmtDate(openingRows[0].date)}
-                  </td>
-                  <td className="px-2 py-1.5 text-ink-soft" colSpan={2}>
-                    <button onClick={() => setOpeningOpen((v) => !v)}
-                      className="hover:text-ledger">
-                      Opening entries · {openingRows.length} · {openingOpen ? "hide" : "show"}
-                    </button>
-                  </td>
-                  <td className="px-2 py-1.5 text-right amount text-ink-faint">—</td>
-                  <td colSpan={3}></td>
-                </tr>
-              )}
-              {!filtering && openingOpen && openingRows.map((row) => (
-                <TxnEditRow
-                  key={"o" + row.txn.id}
-                  row={row}
-                  accounts={accounts}
-                  active={active}
-                  today={today}
-                  expanded={expanded === row.txn.id}
-                  onToggleExpand={() => setExpanded(expanded === row.txn.id ? null : row.txn.id)}
-                  onSplit={() => setSplitFor(row)}
-                  onCover={() => setCoverFor(row)}
-                  onSave={saveEdit}
-                  onPatch={patchTxn}
-                  onDelete={() => remove(row)}
-                />
-              ))}
               {orderedRows.map((row) => {
                 if (row.kind === "virtual") {
                   const t = row.template;
@@ -844,6 +821,37 @@ export default function BookPage() {
                   />
                 );
               })}
+              {!filtering && openingRows.length > 0 && (
+                <tr className="bg-paper">
+                  <td className="px-2 py-1.5 amount text-ink-faint whitespace-nowrap">
+                    {fmtDate(openingRows[0].date)}
+                  </td>
+                  <td className="px-2 py-1.5 text-ink-soft" colSpan={2}>
+                    <button onClick={() => setOpeningOpen((v) => !v)}
+                      className="hover:text-ledger">
+                      Opening entries · {openingRows.length} · {openingOpen ? "hide" : "show"}
+                    </button>
+                  </td>
+                  <td className="px-2 py-1.5 text-right amount text-ink-faint">—</td>
+                  <td colSpan={3}></td>
+                </tr>
+              )}
+              {!filtering && openingOpen && openingRows.map((row) => (
+                <TxnEditRow
+                  key={"o" + row.txn.id}
+                  row={row}
+                  accounts={accounts}
+                  active={active}
+                  today={today}
+                  expanded={expanded === row.txn.id}
+                  onToggleExpand={() => setExpanded(expanded === row.txn.id ? null : row.txn.id)}
+                  onSplit={() => setSplitFor(row)}
+                  onCover={() => setCoverFor(row)}
+                  onSave={saveEdit}
+                  onPatch={patchTxn}
+                  onDelete={() => remove(row)}
+                />
+              ))}
             </tbody>
           </table>
           {monthRows.length === 0 && (filtering || openingRows.length === 0) && (
