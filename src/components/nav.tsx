@@ -9,7 +9,8 @@ import { Modal } from "@/components/modal";
 import { Field } from "@/components/field";
 import { VaultButton } from "@/components/vault/vault-button";
 import { ExportModal } from "@/components/export-modal";
-import { BookOpen, Check, ChevronDown, Download, Eye, EyeOff, Pencil, Plus, Users, X } from "lucide-react";
+import { ImportModal } from "@/components/import-modal";
+import { BookOpen, Check, ChevronDown, Download, Eye, EyeOff, Pencil, Plus, Upload, Users, X } from "lucide-react";
 import type { LedgerMember, LedgerRole } from "@munshi/core";
 
 const LINKS = [
@@ -93,6 +94,7 @@ function LedgerSwitcher({ email }: { email: string }) {
   const [open, setOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState("");
@@ -181,6 +183,15 @@ function LedgerSwitcher({ email }: { email: string }) {
             <button
               onClick={() => {
                 setOpen(false);
+                setImporting(true);
+              }}
+              className="w-full flex items-center gap-1.5 px-3 py-1.5 text-sm text-left text-ink-soft hover:bg-ledger-soft/40"
+            >
+              <Upload size={13} /> Import into this ledger…
+            </button>
+            <button
+              onClick={() => {
+                setOpen(false);
                 setName(ledger?.name ?? "");
                 setRenaming(true);
               }}
@@ -203,6 +214,7 @@ function LedgerSwitcher({ email }: { email: string }) {
       )}
       {sharing && <MembersModal email={email} onClose={() => setSharing(false)} />}
       {exporting && <ExportModal onClose={() => setExporting(false)} />}
+      {importing && <ImportModal onClose={() => setImporting(false)} />}
       {(creating || renaming) && (
         <Modal
           open
