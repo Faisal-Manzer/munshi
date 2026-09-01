@@ -35,8 +35,27 @@ function sessionFrom(auth: CallerAuth | undefined): Session {
   const extra = auth?.extra as
     | { userId?: string; email?: string | null; ledgerId?: string; sealedKey?: string }
     | undefined;
-  if (!extra?.userId || !extra.ledgerId || !extra.sealedKey) {
-    throw new Error("This session has no ledger key. Reconnect Munshi to unlock a book.");
+  // Name what is actually absent. "Reconnect to unlock" is the right advice
+  // only when the token genuinely carries no key; when the auth info never
+  // arrived at all, reconnecting forever cannot fix it, and a caller who is
+  // told to reconnect will do exactly that instead of reporting the bug.
+  if (!auth) {
+    throw new Error(
+      "No auth info reached this tool call — the bearer token was accepted but " +
+        "its claims were not forwarded. This is a server bug, not something " +
+        "reconnecting will fix."
+    );
+  }
+  if (!extra) {
+    throw new Error("Auth info arrived with no claims attached. This is a server bug.");
+  }
+  const missing = (["userId", "ledgerId", "sealedKey"] as const).filter((k) => !extra[k]);
+  if (!extra.userId || !extra.ledgerId || !extra.sealedKey) {
+    throw new Error(
+      `This session's token is missing ${missing.join(", ")}. ` +
+        "Disconnect Munshi and reconnect, choosing a book and entering your " +
+        "encryption passphrase at the consent screen."
+    );
   }
   return {
     userId: extra.userId,

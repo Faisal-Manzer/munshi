@@ -181,6 +181,29 @@ export interface ToolRegistrar {
   registerTool(name: string, config: never, handler: never): unknown;
 }
 
+/**
+ * Where the SDK puts the caller's auth.
+ *
+ * It has moved: older versions hang `authInfo` directly off the handler's
+ * `extra`, current ones nest it under `extra.http` alongside the request and
+ * the SSE handles. Both are checked, newest first, because the adapter and the
+ * SDK are separate packages on separate release cadences and a version bump of
+ * either must not silently turn every authenticated call into "no auth info".
+ *
+ * Silently is the operative word: the token verifies, the request is accepted,
+ * and only the tool sees nothing — which reads to a user as "the server forgot
+ * my key" and sends them round the OAuth flow again, forever.
+ */
+export function authFrom(extra: ToolExtra | undefined): CallerAuth | undefined {
+  return extra?.authInfo ?? extra?.http?.authInfo;
+}
+
+/** The second argument the SDK hands a tool handler, as far as this package cares. */
+export interface ToolExtra {
+  authInfo?: CallerAuth;
+  http?: { authInfo?: CallerAuth };
+}
+
 export function registerTools(server: ToolRegistrar, contextFor: ContextFactory): void {
   const tool = (
     name: string,
@@ -189,11 +212,11 @@ export function registerTools(server: ToolRegistrar, contextFor: ContextFactory)
   ) => {
     server.registerTool(name, config as never, (async (
       args: never,
-      extra?: CallerAuth & { authInfo?: CallerAuth }
+      extra?: ToolExtra
     ) => {
       let ctx: McpContext | null = null;
       try {
-        ctx = await contextFor(extra?.authInfo);
+        ctx = await contextFor(authFrom(extra));
         return await run(args, ctx);
       } catch (e) {
         return failure(e);
