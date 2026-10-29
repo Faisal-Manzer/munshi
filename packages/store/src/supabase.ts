@@ -44,12 +44,14 @@ function txnRow(txn: TransactionDraft) {
 function postingRows(
   transactionId: string,
   postings: PostingDraft[],
-  ledgerKey: Uint8Array | null
+  ledgerKey: Uint8Array | null,
+  owner: { user_id?: string }
 ) {
   return postings.map((p) => {
-    if (!ledgerKey) return { ...p, transaction_id: transactionId };
+    if (!ledgerKey) return { ...owner, ...p, transaction_id: transactionId };
     const id = crypto.randomUUID();
     return {
+      ...owner,
       id,
       transaction_id: transactionId,
       account_id: p.account_id,
@@ -62,11 +64,17 @@ function postingRows(
  * @param ledgerKey  the active book's key, or null for a book that has not
  *                   been encrypted yet. Rows are written in whichever format
  *                   the book is already in — there is no half-migrated state.
+ * @param userId     who the new rows belong to. A signed-in client leaves it
+ *                   out and `user_id` defaults to `auth.uid()`; a service-role
+ *                   caller (MCP) has no auth.uid(), so without this every
+ *                   insert fails the not-null on `user_id`.
  */
 export function createSupabaseStore(
   supabase: SupabaseClient,
-  ledgerKey: Uint8Array | null = null
+  ledgerKey: Uint8Array | null = null,
+  userId: string | null = null
 ): LedgerStore {
+  const owner = userId ? { user_id: userId } : {};
   // ids are minted client-side when encrypting: the payload's AAD binds to the
   // row id, so the id has to exist before the ciphertext does
   const newId = () => crypto.randomUUID();
@@ -85,6 +93,7 @@ export function createSupabaseStore(
         const { data: txn, error } = await supabase
           .from("transactions")
           .insert({
+            ...owner,
             ...(id ? { id } : {}),
             ...txnRow(op.txn),
             ...(ledgerKey ? encryptTransaction(ledgerKey, id!, txnRow(op.txn)) : {}),
@@ -96,7 +105,7 @@ export function createSupabaseStore(
         if (error) throw error;
         const { error: pe } = await supabase
           .from("postings")
-          .insert(postingRows(txn.id, op.postings, ledgerKey));
+          .insert(postingRows(txn.id, op.postings, ledgerKey, owner));
         if (pe) {
           await supabase.from("transactions").delete().eq("id", txn.id);
           throw pe;
@@ -121,7 +130,7 @@ export function createSupabaseStore(
       if (de) throw de;
       const { error: pe } = await supabase
         .from("postings")
-        .insert(postingRows(op.transactionId, op.postings, ledgerKey));
+        .insert(postingRows(op.transactionId, op.postings, ledgerKey, owner));
       if (pe) throw pe;
       return op.transactionId;
     },
@@ -245,6 +254,7 @@ export function createSupabaseStore(
       const { data, error } = await supabase
         .from("accounts")
         .insert({
+          ...owner,
           ...(id ? { id } : {}),
           ...account,
           ...(ledgerKey ? encryptAccount(ledgerKey, id!, account) : {}),
@@ -274,6 +284,7 @@ export function createSupabaseStore(
       const { data, error } = await supabase
         .from("recurring_templates")
         .insert({
+          ...owner,
           ...(id ? { id } : {}),
           ...template,
           ...(ledgerKey ? encryptTemplate(ledgerKey, id!, template) : {}),
@@ -333,6 +344,7 @@ export function createSupabaseStore(
       const { data, error } = await supabase
         .from("accounts")
         .insert({
+          ...owner,
           ...(id ? { id } : {}),
           ledger_id: spec.ledgerId,
           name: spec.name,

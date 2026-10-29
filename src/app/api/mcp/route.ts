@@ -126,7 +126,7 @@ async function buildContext(auth: CallerAuth | undefined): Promise<McpContext> {
         return {
           userId: session.userId,
           ledgerId: session.ledgerId,
-          store: createSupabaseStore(supabase, ledgerKey),
+          store: createSupabaseStore(supabase, ledgerKey, session.userId),
           snapshot: await snapshot(),
           log: commitLog(supabase),
           nowSeconds: Math.floor(now.getTime() / 1000),
