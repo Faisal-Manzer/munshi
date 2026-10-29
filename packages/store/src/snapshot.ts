@@ -34,6 +34,27 @@ const TXN_COLUMNS =
   "id, ledger_id, date, description, status, tag, notes, created_at, recurring_template_id, reimburse_account_id, reimburse_amount_paise, payload";
 const POSTING_COLUMNS = "id, transaction_id, account_id, amount_paise, payload";
 
+/**
+ * PostgREST answers at most `max-rows` (1000 on Supabase) per request and says
+ * nothing when it stops there. A book past that size would load with legs
+ * missing and every balance quietly wrong, so whole-table reads page until a
+ * short page comes back. Ordered by id so pages neither overlap nor skip.
+ */
+const PAGE = 1000;
+
+async function selectAll<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await page(from, from + PAGE - 1);
+    if (error) return { data: rows, error };
+    const got = (data ?? []) as T[];
+    rows.push(...got);
+    if (got.length < PAGE) return { data: rows, error: null };
+  }
+}
+
 export interface LedgerSnapshot extends LedgerData {
   templates: RecurringTemplate[];
 }
@@ -65,8 +86,12 @@ export async function loadLedger(
       .eq("ledger_id", ledgerId)
       .order("sort_order")
       .order("created_at"),
-    supabase.from("transactions").select(TXN_COLUMNS).eq("ledger_id", ledgerId),
-    supabase.from("postings").select(POSTING_COLUMNS).eq("ledger_id", ledgerId),
+    selectAll((from, to) =>
+      supabase.from("transactions").select(TXN_COLUMNS).eq("ledger_id", ledgerId).order("id").range(from, to)
+    ),
+    selectAll((from, to) =>
+      supabase.from("postings").select(POSTING_COLUMNS).eq("ledger_id", ledgerId).order("id").range(from, to)
+    ),
     withTemplates
       ? supabase.from("recurring_templates").select("*").eq("ledger_id", ledgerId)
       : Promise.resolve({ data: [], error: null }),
