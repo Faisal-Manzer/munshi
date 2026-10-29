@@ -14,6 +14,7 @@ import {
   computeBalances,
   computeCardCycles,
   displayBalance,
+  entryCreateOp,
   formatPaise,
   isCard,
   subtreeBalance,
@@ -37,8 +38,19 @@ export interface CardEmiInput {
   /** Category the spending lands in each month. */
   expenseAccountId: string;
   firstBillingISO: string;
+  /**
+   * What the bank actually bills each month — principal plus interest plus
+   * GST. Defaults to total ÷ months, which is only right for a no-cost EMI.
+   */
+  installmentPaise?: number | null;
+  /** Post the first installment now, linked, dated firstBillingISO. */
+  postFirstInstallment?: boolean;
+  /** Amount of that first installment, when it differs from installmentPaise. */
+  firstInstallmentPaise?: number | null;
   /** One-off fee the bank charges to convert. Posted separately when given. */
   processingFeePaise?: number | null;
+  /** When the fee was billed; defaults to today. */
+  feeDateISO?: string | null;
   /**
    * Set once the user has been shown a possible duplicate and said it is not
    * one — or has asked for the original spend to be reversed.
@@ -123,7 +135,8 @@ export function proposeCardEmi(
   }
 
   // the installment: the bank bills the card, the category takes the expense
-  const perMonth = Math.round(input.totalPaise / input.months);
+  const perMonth = input.installmentPaise ?? Math.round(input.totalPaise / input.months);
+  if (perMonth <= 0) throw new McpError("UNBALANCED", "An installment needs an amount above zero.");
   const template: NewTemplate & { id: string } = {
     id: mint(),
     ledger_id: input.ledgerId,
@@ -146,12 +159,27 @@ export function proposeCardEmi(
   };
   ops.push(templateCreateOp(template));
 
+  if (input.postFirstInstallment) {
+    ops.push(
+      entryCreateOp({
+        ledgerId: input.ledgerId,
+        date: input.firstBillingISO,
+        description: template.name,
+        status: "done",
+        fromAccountId: card.id,
+        toAccountId: expense.id,
+        amountPaise: input.firstInstallmentPaise ?? perMonth,
+        recurringTemplateId: template.id,
+      })
+    );
+  }
+
   if (input.processingFeePaise) {
     ops.push({
       kind: "entry.create",
       ledgerId: input.ledgerId,
       txn: {
-        date: input.today,
+        date: input.feeDateISO ?? input.today,
         description: `EMI processing fee — ${input.description}`,
         status: "done",
       },
@@ -162,7 +190,7 @@ export function proposeCardEmi(
     });
   }
 
-  if (perMonth * input.months !== input.totalPaise) {
+  if (!input.installmentPaise && perMonth * input.months !== input.totalPaise) {
     warnings.push(
       `${formatPaise(input.totalPaise)} does not divide evenly by ${input.months}. ` +
         `The template bills ${formatPaise(perMonth)} a month, ` +
@@ -208,8 +236,10 @@ export function proposeCardEmi(
         `${formatPaise(perMonth)} is added to this card's bill on day ${template.day_of_month} ` +
         `for ${input.months} months. It is not a new spend each month — the ` +
         `${formatPaise(input.totalPaise)} purchase is already made; this spreads when the card ` +
-        `asks you to pay for it. Today's balance does not move: the first posting is ` +
-        `${input.firstBillingISO}.`,
+        `asks you to pay for it. ` +
+        (input.postFirstInstallment
+          ? `The first installment is posted now, dated ${input.firstBillingISO}.`
+          : `Today's balance does not move: the first posting is ${input.firstBillingISO}.`),
       sections,
       warnings,
     }),

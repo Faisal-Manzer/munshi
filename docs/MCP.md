@@ -224,7 +224,8 @@ loan, person/receivable) · `propose_account_edit` · `propose_archive_account` 
 `propose_opening_balance`
 
 **Write — recurring / EMI**
-`propose_template` · `propose_template_edit` · `propose_emi` ·
+`propose_template` · `propose_template_update` · `propose_post_recurring`
+(this month's occurrence, linked so the Book stops showing it due) · `propose_emi` ·
 `propose_emi_close` · `propose_budget` (`is_budget` internal transfer)
 
 **Write — operations**

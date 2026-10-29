@@ -19,6 +19,7 @@ import {
 import type { LedgerSnapshot } from "@munshi/store";
 import { McpError } from "../errors";
 import { buildPreview } from "../preview";
+import { postedInMonth, requireTemplate } from "./templates";
 import type { Operation } from "./types";
 
 export interface EntryOperationInput extends EntryInput {
@@ -45,7 +46,14 @@ export function proposeEntry(
     throw new McpError("UNBALANCED", "An entry needs an amount greater than zero.");
   }
   if (input.reimburseAccountId) requireAccount(snapshot, input.reimburseAccountId, "person");
-  if (input.reimbursePaise && input.reimbursePaise >= input.amountPaise) {
+  const template = input.recurringTemplateId
+    ? requireTemplate(snapshot, input.recurringTemplateId)
+    : null;
+  // an EMI run for someone else is owed by them in full: the person is also
+  // the destination, so the "share" is the whole amount and not a split
+  const owedWhole =
+    input.reimburseAccountId === input.toAccountId && input.reimbursePaise === input.amountPaise;
+  if (input.reimbursePaise && input.reimbursePaise >= input.amountPaise && !owedWhole) {
     throw new McpError(
       "UNBALANCED",
       `The reimbursed share (${formatPaise(input.reimbursePaise)}) must be less than the ` +
@@ -67,8 +75,24 @@ export function proposeEntry(
     );
   }
 
+  const warnings: string[] = [];
+  if (twin) {
+    warnings.push(`A same-day entry called "${twin.description}" already exists; this adds a second one.`);
+  }
+  if (template) {
+    if (postedInMonth(snapshot, template.id, input.date).length > 0) {
+      warnings.push(`"${template.name}" is already posted for ${input.date.slice(0, 7)}.`);
+    }
+    if (
+      template.from_account_id !== input.fromAccountId ||
+      template.to_account_id !== input.toAccountId
+    ) {
+      warnings.push(`Linked to "${template.name}" but its accounts differ from the template's.`);
+    }
+  }
+
   const ops: LedgerOp[] = [entryCreateOp(input)];
-  const reimbursed = input.reimbursePaise ?? 0;
+  const reimbursed = owedWhole ? 0 : (input.reimbursePaise ?? 0);
 
   const explanation =
     reimbursed > 0 && input.reimburseAccountId
@@ -84,9 +108,7 @@ export function proposeEntry(
     preview: buildPreview(snapshot, ops, {
       title: `ENTRY — ${input.description}   ${formatPaise(input.amountPaise)}`,
       explanation,
-      warnings: twin
-        ? [`A same-day entry called "${twin.description}" already exists; this adds a second one.`]
-        : [],
+      warnings,
     }),
   };
 }
@@ -106,6 +128,11 @@ export function proposeTransfer(
   };
 }
 
+/**
+ * Rewrite an entry. A split the caller does not mention is kept: dropping
+ * `reimburse_*` on an edit used to clear it silently, which loses what a
+ * person owes on something as routine as fixing a date.
+ */
 export function proposeEntryEdit(
   snapshot: LedgerSnapshot,
   transactionId: string,
@@ -116,7 +143,18 @@ export function proposeEntryEdit(
   requireAccount(snapshot, input.fromAccountId, "source");
   requireAccount(snapshot, input.toAccountId, "destination");
 
-  const ops: LedgerOp[] = [entryRewriteOp(transactionId, input)];
+  const keepSplit = input.reimburseAccountId === undefined && input.reimbursePaise === undefined;
+  const reimburseAccountId = keepSplit ? current.reimburse_account_id : input.reimburseAccountId;
+  let reimbursePaise = keepSplit ? current.reimburse_amount_paise : input.reimbursePaise;
+  // owed in full stays owed in full when the amount changes
+  if (keepSplit && reimburseAccountId && reimburseAccountId === input.toAccountId) {
+    reimbursePaise = input.amountPaise;
+  }
+  if (reimburseAccountId) requireAccount(snapshot, reimburseAccountId, "person");
+
+  const ops: LedgerOp[] = [
+    entryRewriteOp(transactionId, { ...input, reimburseAccountId, reimbursePaise }),
+  ];
   return {
     ops,
     summary: `Edit — ${current.description}`,

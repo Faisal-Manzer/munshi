@@ -42,6 +42,11 @@ import {
 } from "./operations/entries";
 import { proposeLoan } from "./operations/loans";
 import { proposeReconcile } from "./operations/reconcile";
+import {
+  postedInMonth,
+  proposePostRecurring,
+  proposeTemplateUpdate,
+} from "./operations/templates";
 
 export interface LedgerRef {
   id: string;
@@ -393,7 +398,9 @@ export function registerTools(server: ToolRegistrar, contextFor: ContextFactory)
     "list_templates",
     {
       title: "List recurring and EMIs",
-      description: "Recurring templates, with EMI progress where a template has installments.",
+      description:
+        "Recurring templates, with EMI progress where a template has installments, and " +
+        "whether each is already posted in the month. Post a due one with propose_post_recurring.",
       inputSchema: { month: z.string().regex(/^\d{4}-\d{2}$/).optional() },
     },
     async ({ month }: { month?: string }, ctx) =>
@@ -401,11 +408,17 @@ export function registerTools(server: ToolRegistrar, contextFor: ContextFactory)
         const m = month ?? ctx.today.slice(0, 7);
         const rows = snapshot.templates.map((t) => {
           const emi = emiInfo(t, m);
+          const name = (id: string | null) => (id && accountById(snapshot.accounts, id)?.name) || "?";
           return [
             t.name,
             formatPaise(t.amount_paise),
             `day ${t.day_of_month}`,
+            `${name(t.from_account_id)} → ${name(t.to_account_id)}`,
+            t.reimburse_account_id && t.reimburse_amount_paise
+              ? `${name(t.reimburse_account_id)} owes ${formatPaise(t.reimburse_amount_paise)}`
+              : "",
             emi ? `installment ${emi.idx}/${emi.total} (ends ${emi.endISO})` : t.kind,
+            postedInMonth(snapshot, t.id, `${m}-01`).length > 0 ? `posted in ${m}` : `not posted in ${m}`,
             t.active ? "" : "inactive",
             t.id,
           ]
@@ -435,11 +448,17 @@ export function registerTools(server: ToolRegistrar, contextFor: ContextFactory)
       title: "Propose an entry",
       description:
         "Preview a spend, income or payment. Nothing is written until commit_proposal. " +
-        "Use reimburse_* when someone owes part of it back — a split bill.",
+        "Use reimburse_* when someone owes part of it back — a split bill. For a recurring " +
+        "bill or EMI that is due this month, use propose_post_recurring instead: only a " +
+        "linked entry clears it from the month.",
       inputSchema: {
         ...entryShape,
         reimburse_account_id: z.string().optional(),
         reimburse_paise: money.optional(),
+        recurring_template_id: z
+          .string()
+          .optional()
+          .describe("Link to a recurring template, so the month counts it as posted"),
         allow_duplicate: z.boolean().optional(),
       },
     },
@@ -456,6 +475,7 @@ export function registerTools(server: ToolRegistrar, contextFor: ContextFactory)
           notes?: string;
           reimburse_account_id?: string;
           reimburse_paise?: number;
+          recurring_template_id?: string;
           allow_duplicate?: boolean;
         };
         return proposalResponse(
@@ -472,6 +492,7 @@ export function registerTools(server: ToolRegistrar, contextFor: ContextFactory)
             amountPaise: a.amount_paise,
             reimburseAccountId: a.reimburse_account_id ?? null,
             reimbursePaise: a.reimburse_paise ?? null,
+            recurringTemplateId: a.recurring_template_id ?? null,
             tag: a.tag ?? null,
             notes: a.notes ?? null,
             allowDuplicate: a.allow_duplicate,
@@ -522,8 +543,15 @@ export function registerTools(server: ToolRegistrar, contextFor: ContextFactory)
     "propose_entry_edit",
     {
       title: "Propose an edit",
-      description: "Rewrite an existing entry. Its legs are replaced wholesale.",
-      inputSchema: { transaction_id: z.string(), ...entryShape },
+      description:
+        "Rewrite an existing entry. Its legs are replaced wholesale. A split (reimburse_*) " +
+        "left out is kept as it was; send null to remove it.",
+      inputSchema: {
+        transaction_id: z.string(),
+        ...entryShape,
+        reimburse_account_id: z.string().nullable().optional(),
+        reimburse_paise: money.nullable().optional(),
+      },
     },
     async (args: Record<string, never>, ctx) =>
       withLedger(ctx, (snapshot, ledgerId) => {
@@ -537,12 +565,16 @@ export function registerTools(server: ToolRegistrar, contextFor: ContextFactory)
           status: "pending" | "done";
           tag?: string;
           notes?: string;
+          reimburse_account_id?: string | null;
+          reimburse_paise?: number | null;
         };
         return proposalResponse(
           ctx,
           snapshot,
           ledgerId,
           proposeEntryEdit(snapshot, a.transaction_id, {
+            reimburseAccountId: a.reimburse_account_id,
+            reimbursePaise: a.reimburse_paise,
             date: a.date,
             description: a.description,
             status: a.status,
@@ -551,6 +583,114 @@ export function registerTools(server: ToolRegistrar, contextFor: ContextFactory)
             amountPaise: a.amount_paise,
             tag: a.tag ?? null,
             notes: a.notes ?? null,
+          })
+        );
+      })
+  );
+
+  tool(
+    "propose_post_recurring",
+    {
+      title: "Post a recurring bill or EMI",
+      description:
+        "Post this month's occurrence of a recurring template — rent, a subscription, a loan " +
+        "or card EMI — linked to it, exactly as the Book's post button does. The amount " +
+        "defaults to the template's; give what actually went out if it differed. A split " +
+        "with a person follows the template.",
+      inputSchema: {
+        template_id: z.string(),
+        date: isoDate,
+        amount_paise: money.optional(),
+        reimburse_paise: money.optional().describe("Override the person's share"),
+        status: z.enum(["pending", "done"]).default("done"),
+        tag: z.string().optional(),
+        notes: z.string().optional(),
+        allow_duplicate: z.boolean().optional(),
+      },
+    },
+    async (args: Record<string, never>, ctx) =>
+      withLedger(ctx, (snapshot, ledgerId) => {
+        const a = args as unknown as {
+          template_id: string;
+          date: string;
+          amount_paise?: number;
+          reimburse_paise?: number;
+          status: "pending" | "done";
+          tag?: string;
+          notes?: string;
+          allow_duplicate?: boolean;
+        };
+        return proposalResponse(
+          ctx,
+          snapshot,
+          ledgerId,
+          proposePostRecurring(snapshot, {
+            ledgerId,
+            templateId: a.template_id,
+            date: a.date,
+            amountPaise: a.amount_paise ?? null,
+            reimbursePaise: a.reimburse_paise ?? null,
+            status: a.status,
+            tag: a.tag ?? null,
+            notes: a.notes ?? null,
+            allowDuplicate: a.allow_duplicate,
+          })
+        );
+      })
+  );
+
+  tool(
+    "propose_template_update",
+    {
+      title: "Change a recurring bill or EMI",
+      description:
+        "Change a recurring template from here on — a new amount, day, split, run of " +
+        "installments, or switch it off. Already-posted entries are not touched.",
+      inputSchema: {
+        template_id: z.string(),
+        name: z.string().min(1).optional(),
+        amount_paise: money.optional(),
+        day_of_month: z.number().int().min(1).max(31).optional(),
+        reimburse_paise: money.nullable().optional(),
+        reimburse_expected_day: z.number().int().min(1).max(31).nullable().optional(),
+        total_installments: z.number().int().min(1).nullable().optional(),
+        start_date: isoDate.nullable().optional(),
+        end_date: isoDate.nullable().optional(),
+        active: z.boolean().optional(),
+        notes: z.string().nullable().optional(),
+      },
+    },
+    async (args: Record<string, never>, ctx) =>
+      withLedger(ctx, (snapshot, ledgerId) => {
+        const a = args as unknown as {
+          template_id: string;
+          name?: string;
+          amount_paise?: number;
+          day_of_month?: number;
+          reimburse_paise?: number | null;
+          reimburse_expected_day?: number | null;
+          total_installments?: number | null;
+          start_date?: string | null;
+          end_date?: string | null;
+          active?: boolean;
+          notes?: string | null;
+        };
+        return proposalResponse(
+          ctx,
+          snapshot,
+          ledgerId,
+          proposeTemplateUpdate(snapshot, {
+            templateId: a.template_id,
+            name: a.name,
+            amountPaise: a.amount_paise,
+            dayOfMonth: a.day_of_month,
+            reimbursePaise: a.reimburse_paise,
+            reimburseExpectedDay: a.reimburse_expected_day,
+            totalInstallments: a.total_installments,
+            startDate: a.start_date,
+            endDate: a.end_date,
+            active: a.active,
+            notes: a.notes,
           })
         );
       })
@@ -692,7 +832,9 @@ export function registerTools(server: ToolRegistrar, contextFor: ContextFactory)
       description:
         "Convert a card purchase into installments. Give the full purchase amount, not the " +
         "monthly slice. If the purchase is already logged as one spend, this refuses until you " +
-        "say whether to reverse it.",
+        "say whether to reverse it. Give installment_paise as billed (principal + interest + " +
+        "GST) unless it is a no-cost EMI, and post_first_installment when this month's " +
+        "installment is already on the statement.",
       inputSchema: {
         card_id: z.string(),
         description: z.string().min(1),
@@ -700,7 +842,11 @@ export function registerTools(server: ToolRegistrar, contextFor: ContextFactory)
         months: z.number().int().min(1),
         expense_account_id: z.string(),
         first_billing: isoDate,
+        installment_paise: money.optional(),
+        post_first_installment: z.boolean().optional(),
+        first_installment_paise: money.optional(),
         processing_fee_paise: money.optional(),
+        fee_date: isoDate.optional(),
         duplicate: z.enum(["ignore", "reverse"]).optional(),
       },
     },
@@ -713,7 +859,11 @@ export function registerTools(server: ToolRegistrar, contextFor: ContextFactory)
           months: number;
           expense_account_id: string;
           first_billing: string;
+          installment_paise?: number;
+          post_first_installment?: boolean;
+          first_installment_paise?: number;
           processing_fee_paise?: number;
+          fee_date?: string;
           duplicate?: "ignore" | "reverse";
         };
         return proposalResponse(
@@ -728,7 +878,11 @@ export function registerTools(server: ToolRegistrar, contextFor: ContextFactory)
             months: a.months,
             expenseAccountId: a.expense_account_id,
             firstBillingISO: a.first_billing,
+            installmentPaise: a.installment_paise ?? null,
+            postFirstInstallment: a.post_first_installment,
+            firstInstallmentPaise: a.first_installment_paise ?? null,
             processingFeePaise: a.processing_fee_paise ?? null,
+            feeDateISO: a.fee_date ?? null,
             duplicate: a.duplicate,
             today: ctx.today,
           })
